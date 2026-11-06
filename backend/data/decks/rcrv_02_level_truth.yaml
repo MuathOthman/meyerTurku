@@ -1,0 +1,31 @@
+# Answer key for RCRV 02 Level (plan 7-4A, PDF page index 8). HELD OUT: written by eye from the
+# clean drawing before any segmentation or AI naming was run on this sheet, and after the last
+# code change. Anchors are page points.
+page_index: 8
+rooms:
+  - {anchor: [488, 429], accept: ["EMERGENCY GENERATOR"], category: machinery}
+  - {anchor: [511.6, 427], accept: ["EMERGENCY GENERATOR FUEL TANK", "FUEL TANK"], category: [machinery, stores, service]}
+  - {anchor: [545, 453.6], accept: ["3RD ENG"], category: cabin}
+  - {anchor: [557, 456.7], accept: ["2ND ENG"], category: cabin}
+  - {anchor: [612, 423], accept: ["PILOTHOUSE ELECTRONICS"], category: [control, machinery, service]}
+  - {anchor: [639, 451.5], accept: ["ELECTRICAL ENGINEER"], category: cabin}
+  - {anchor: [676.6, 452.7], accept: ["2ND MATE"], category: cabin}
+  - {anchor: [713.7, 453.8], accept: ["CAPTAIN"], category: cabin}
+  - {anchor: [687, 492], accept: ["PASSAGEWAY"], category: corridor}
+  - {anchor: [733.6, 491], accept: ["PASSAGEWAY"], category: corridor}
+  - {anchor: [617, 507], accept: ["STAIRWAY"], category: stair}
+  - {anchor: [610, 526], accept: ["STAIRWAY"], category: stair}
+  - {anchor: [575, 526], accept: ["CG LOCKER", "CG LKR"], category: service}
+  - {anchor: [577, 507], accept: ["LN LKR"], category: service}
+  - {anchor: [590, 504], accept: ["TRUNK"], category: machinery}
+  - {anchor: [557, 568], accept: ["HVAC EQUIP"], category: machinery}
+  - {anchor: [473, 510], accept: ["CENTERBOARD TRUNK"], category: machinery}
+  - {anchor: [647.5, 527], accept: ["CREW DOUBLE"], category: cabin}
+  - {anchor: [690, 528], accept: ["CHIEF MATE"], category: cabin}
+  - {anchor: [722, 534.5], accept: ["CHIEF ENG"], category: cabin}
+  - {anchor: [406, 459], accept: ["VENTILATION"], category: machinery}
+not_rooms:
+  - [534, 427.6]   # bed
+  - [675, 428]     # bed
+  - [698, 453.6]   # sofa
+  - [585, 559]     # HVAC unit

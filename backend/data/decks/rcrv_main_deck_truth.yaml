@@ -1,0 +1,34 @@
+# Answer key for RCRV Main Deck (plan 9-4C, PDF page index 10), a deck Keel was not built on.
+# Read by eye from the drawing BEFORE any AI naming was run on this sheet. Anchors are page points.
+# `accept` lists names counted correct. Open-plan or ambiguous areas accept several.
+page_index: 10
+region: [140, 95, 1010, 295]
+rooms:
+  - {anchor: [451, 131], accept: ["BOSUN STORES", "BOSUN STORES/SHOP"], category: stores}
+  - {anchor: [409, 115], accept: ["DC LKR"], category: service}
+  - {anchor: [484, 126], accept: ["VENTILATION", "UPTAKE"], category: machinery}
+  - {anchor: [533, 123], accept: ["FIRE SUPPRESSION"], category: machinery}
+  - {anchor: [578, 148], accept: ["ACCESSIBLE SCIENCE"], category: cabin}
+  - {anchor: [555, 161], accept: ["PUBLIC W/C"], category: sanitary}
+  - {anchor: [475, 156], accept: ["FAN ROOM"], category: machinery}
+  - {anchor: [432, 159], accept: ["ER ACCESS"], category: stair}
+  - {anchor: [524, 200], accept: ["WET LAB"], category: lab}
+  - {anchor: [541, 196], accept: ["TRUNK"], category: machinery}
+  - {anchor: [559, 197], accept: ["CENTERBOARD TRUNK"], category: machinery}
+  - {anchor: [613, 196], accept: ["TRUNK"], category: machinery}
+  - {anchor: [663, 198], accept: ["MAIN LAB"], category: lab}
+  - {anchor: [678, 193], accept: ["TRUNK"], category: machinery}
+  - {anchor: [793, 216], accept: ["SCULLERY", "GALLEY"], category: galley}
+  - {anchor: [713, 281], accept: ["COMPUTER LAB"], category: lab}
+  - {anchor: [822, 232], accept: ["DRY STORES"], category: stores}
+  - {anchor: [795, 136], accept: ["FROZEN STORES"], category: stores}
+  - {anchor: [824, 144], accept: ["CHILLED STORES"], category: stores}
+  - {anchor: [758, 149], accept: ["PASSAGEWAY", "MESS", "STAIRWAY", "ER ACCESS", "LOUNGE", "EMERGENCY CONTROL STATION", "FIRE STATION"], category: [corridor, public, stair, control]}
+  - {anchor: [857, 212], accept: ["GARBAGE ROOM"], category: service}
+# Furniture and equipment that should not be named as rooms.
+not_rooms:
+  - [571, 117]   # bed
+  - [636, 136]   # table
+  - [868, 229]   # garbage room equipment
+  - [560, 215]   # lab bench
+  - [475, 193]   # wet lab equipment

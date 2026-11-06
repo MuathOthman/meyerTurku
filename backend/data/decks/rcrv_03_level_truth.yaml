@@ -1,0 +1,14 @@
+# Answer key for RCRV 03 Level (plan 6-4A, PDF page index 7). HELD OUT: written by eye from the
+# clean drawing before any run on this sheet. Few rooms, so it is a small test. Anchors are page points.
+page_index: 7
+rooms:
+  - {anchor: [576, 442], accept: ["PILOTHOUSE"], category: control}
+  - {anchor: [541.6, 487], accept: ["CHART ROOM"], category: [control, service]}
+  - {anchor: [525, 475], accept: ["W/C"], category: sanitary}
+  - {anchor: [539, 528], accept: ["STAIRWAY"], category: stair}
+  - {anchor: [368, 435], accept: ["UPTAKE"], category: machinery}
+  - {anchor: [422, 432], accept: ["SURVIVAL SUIT STOWAGE"], category: [open_deck, service, stores]}
+  - {anchor: [463, 511], accept: ["CENTERBOARD BERP"], category: [machinery, service]}
+  - {anchor: [401.6, 455.6], accept: ["BOARDING LADDER STOWAGE"], category: [open_deck, service, stores]}
+not_rooms:
+  - [542, 584]   # console

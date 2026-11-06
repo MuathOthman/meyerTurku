@@ -1,0 +1,13 @@
+# Who to notify when something changes. These are reminders, not calculations:
+# Keel has no system data for these disciplines.
+cabin:
+  rules:
+    - {ref: "SOLAS II-2/13", why: "More persons use the escape routes, so route capacity and stair width change."}
+    - {ref: "IMO Res. A.757(18)", why: "Stair width depends on the number of persons served."}
+    - {ref: "SOLAS III", why: "Lifesaving capacity must cover the increased persons on board."}
+  notify:
+    - {discipline: HVAC, why: "Fresh air and cooling load per added person."}
+    - {discipline: Fresh water and sanitation, why: "Water pressure, tank capacity and sewage load."}
+    - {discipline: Electrical, why: "Power and lighting load."}
+    - {discipline: Fire detection, why: "New detectors and zone assignment."}
+    - {discipline: Lifesaving, why: "Lifeboat and life raft capacity, muster station size."}

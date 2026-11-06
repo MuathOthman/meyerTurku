@@ -1,0 +1,23 @@
+# Accuracy evaluation for the 01 Level. Defects must be caught. Controls must not alarm.
+# target_mm lets the report compare what Keel measured with the geometry we injected.
+- {name: "Corridor narrowed to 700 mm", defect: narrow_corridor, args: {id: 01-15-2, to_mm: 700}, rule: ESC-CORRIDOR-WIDTH, subject: 01-15-2, expect: FAIL, target_mm: 700}
+- {name: "Corridor narrowed to 800 mm", defect: narrow_corridor, args: {id: 01-15-2, to_mm: 800}, rule: ESC-CORRIDOR-WIDTH, subject: 01-15-2, expect: FAIL, target_mm: 800}
+- {name: "Aft stair door swing flipped", defect: flip_door_swing, args: {id: D-21}, rule: ESC-DOOR-SWING, subject: D-21, expect: FAIL}
+- {name: "Forward stair door swing flipped", defect: flip_door_swing, args: {id: D-26}, rule: ESC-DOOR-SWING, subject: D-26, expect: FAIL}
+- {name: "Aft exit door swing flipped", defect: flip_door_swing, args: {id: D-06}, rule: ESC-DOOR-SWING, subject: D-06, expect: FAIL}
+- {name: "Only one exit left", defect: remove_exits, args: {ids: [D-06, D-39]}, rule: ESC-TWO-MEANS, subject: 01-15-2, expect: FAIL}
+- {name: "Aft exit removed, aft corridor becomes a long dead end", defect: remove_exits, args: {ids: [D-06]}, rule: ESC-DEAD-END, subject: 01-15-2, expect: FAIL}
+- {name: "Stair door shrunk to 620 mm clear", defect: shrink_door, args: {id: D-26, to_mm: 620}, rule: ESC-DOOR-WIDTH, subject: D-26, expect: FAIL}
+- {name: "Exit door shrunk to 560 mm clear", defect: shrink_door, args: {id: D-06, to_mm: 560}, rule: ESC-DOOR-WIDTH, subject: D-06, expect: FAIL}
+- {name: "Dead-end spur of 10 m added", defect: lengthen_dead_end, args: {id: 01-15-2, spur_mm: 10000}, rule: ESC-DEAD-END, subject: 01-15-2, expect: FAIL}
+- {name: "40 double cabins added", defect: add_cabins, args: {count: 40, near: 01-15-2}, rule: ESC-STAIR-CAPACITY, subject: 1-25-0, expect: FAIL}
+
+# Controls: changes that are compliant or too close to call. A FAIL here is a false alarm.
+- {name: "Corridor narrowed to 1000 mm, still compliant", kind: control, defect: narrow_corridor, args: {id: 01-15-2, to_mm: 1000}, rule: ESC-CORRIDOR-WIDTH, subject: 01-15-2, expect: PASS, target_mm: 1000}
+- {name: "Corridor at 910 mm, within tolerance of 900", kind: control, defect: narrow_corridor, args: {id: 01-15-2, to_mm: 910}, rule: ESC-CORRIDOR-WIDTH, subject: 01-15-2, expect: NEEDS_REVIEW, target_mm: 910}
+- {name: "Corridor at 890 mm, within tolerance of 900", kind: control, defect: narrow_corridor, args: {id: 01-15-2, to_mm: 890}, rule: ESC-CORRIDOR-WIDTH, subject: 01-15-2, expect: NEEDS_REVIEW, target_mm: 890}
+- {name: "Stair door at 760 mm clear, still compliant", kind: control, defect: shrink_door, args: {id: D-26, to_mm: 760}, rule: ESC-DOOR-WIDTH, subject: D-26, expect: PASS}
+- {name: "Stair door at 705 mm clear, within tolerance", kind: control, defect: shrink_door, args: {id: D-26, to_mm: 705}, rule: ESC-DOOR-WIDTH, subject: D-26, expect: NEEDS_REVIEW}
+- {name: "Cabin door flipped, exempt from swing rule", kind: control, defect: flip_door_swing, args: {id: D-25}, rule: ESC-TWO-MEANS, subject: 01-15-2, expect: PASS}
+- {name: "Forward exit removed, two exits and a short dead end remain", kind: control, defect: remove_exits, args: {ids: [D-39]}, rule: ESC-TWO-MEANS, subject: 01-15-2, expect: PASS}
+- {name: "6 double cabins added, stair still adequate", kind: control, defect: add_cabins, args: {count: 6, near: 01-15-2}, rule: ESC-STAIR-CAPACITY, subject: 1-25-0, expect: PASS}

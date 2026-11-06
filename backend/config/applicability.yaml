@@ -1,0 +1,68 @@
+# What an engineer should check for each type of space. This map is fixed, not AI generated.
+#
+# confirmed: true   we read this clause in the source (UK MCA copy of SOLAS II-2/13).
+# confirmed: false  written from general knowledge. Check the reference before relying on it.
+# rule: links to a check Keel can measure, when the drawing has a scale.
+
+corridor:
+  - {ref: "SOLAS II-2/13.3.1.2", what: "A corridor or lobby with only one route of escape is prohibited, apart from stated exceptions.", confirmed: true, rule: ESC-TWO-MEANS}
+  - {ref: "SOLAS II-2/13.3.3.4", what: "No dead-end corridor longer than 7 m. A recess no deeper than its width is allowed.", confirmed: true, rule: ESC-DEAD-END}
+  - {ref: "SOLAS II-2/13.3.3.5, FSS Code ch.13", what: "Width and continuity of the escape route.", confirmed: true, rule: ESC-CORRIDOR-WIDTH}
+  - {ref: "SOLAS II-2/13.3.1.5", what: "Doors on the route open in the direction of escape. Cabin doors are excepted.", confirmed: true, rule: ESC-DOOR-SWING}
+
+stair:
+  - {ref: "SOLAS II-2/13.3.1.1", what: "Stairs give ready escape to the lifeboat and liferaft embarkation deck.", confirmed: true}
+  - {ref: "SOLAS II-2/13.3.2.4.1", what: "Passenger ships: an enclosed stairway giving continuous fire shelter to the embarkation level.", confirmed: true}
+  - {ref: "FSS Code ch.13", what: "Clear stair width.", confirmed: true, rule: ESC-STAIR-WIDTH}
+  - {ref: "IMO Res. A.757(18)", what: "Stair width against the persons it serves. Needs the persons count for each deck.", confirmed: true}
+  - {ref: "SOLAS II-2/13.2.2", what: "A lift does not count as a means of escape.", confirmed: true}
+
+cabin:
+  - {ref: "SOLAS II-2/13.3.3.1", what: "Two widely separated means of escape from each group of spaces this cabin belongs to.", confirmed: true}
+  - {ref: "SOLAS II-2/13.3.1.5.1", what: "A cabin door may open into the cabin, so it does not hit people in the corridor.", confirmed: true}
+  - {ref: "MLC 2006 Standard A3.1", what: "Sleeping room floor area, headroom and berth sizes.", confirmed: false}
+  - {ref: "SOLAS II-2/7", what: "Fire detection coverage.", confirmed: false}
+
+medical:
+  - {ref: "MLC 2006 Standard A3.1", what: "Hospital accommodation requirements for the number of persons carried.", confirmed: false}
+  - {ref: "SOLAS II-2/13.3.1.1", what: "Ready means of escape, considering patients with limited mobility.", confirmed: true}
+
+galley:
+  - {ref: "SOLAS II-2/13.3.2.3", what: "Passenger ships: a galley may reach a stair enclosure only through a lobby of at least 4.5 m2, at least 900 mm wide, with a fire hose station.", confirmed: true}
+  - {ref: "SOLAS II-2/9", what: "Fire integrity of the boundaries and ventilation ducts.", confirmed: false}
+  - {ref: "SOLAS II-2/10", what: "Fire extinguishing arrangements, including deep-fat cookers if fitted.", confirmed: false}
+
+lab:
+  - {ref: "SOLAS II-2/13.3.1.1", what: "Ready means of escape from spaces where crew are normally employed.", confirmed: true}
+  - {ref: "SOLAS II-2/9", what: "Fire integrity of the boundaries for this space category.", confirmed: false}
+  - {ref: "Flag and class requirements", what: "Storage and ventilation of hazardous substances, if any are used here.", confirmed: false}
+
+stores:
+  - {ref: "SOLAS II-2/9", what: "Fire integrity of the boundaries for this space category.", confirmed: false}
+  - {ref: "MLC 2006 Regulation 3.2", what: "For food stores: storage temperature and hygiene.", confirmed: false}
+
+sanitary:
+  - {ref: "MLC 2006 Standard A3.1", what: "Sanitary facility provision and ventilation.", confirmed: false}
+
+public:
+  - {ref: "SOLAS II-2/13.3.3.1", what: "Two widely separated means of escape from this group of spaces.", confirmed: true}
+  - {ref: "MLC 2006 Standard A3.1", what: "Mess room size and seating for the persons carried.", confirmed: false}
+
+control:
+  - {ref: "SOLAS II-2/13.3.1.1", what: "Ready means of escape from control stations.", confirmed: true}
+  - {ref: "SOLAS II-2/9", what: "Fire integrity of control station boundaries.", confirmed: false}
+
+machinery:
+  - {ref: "SOLAS II-2/13.4", what: "Means of escape from machinery spaces. Category A spaces generally need two. An engineer must decide the category.", confirmed: true}
+  - {ref: "SOLAS II-2/9", what: "Fire integrity of the boundaries.", confirmed: false}
+
+service:
+  - {ref: "SOLAS II-2/13.3.1.2", what: "Dead-end service corridors are allowed only under stated conditions.", confirmed: true}
+  - {ref: "SOLAS II-2/9", what: "Fire integrity of the boundaries for this space category.", confirmed: false}
+
+open_deck:
+  - {ref: "SOLAS II-2/13.3.1.1", what: "Escape routes lead to the embarkation deck.", confirmed: true}
+  - {ref: "Load Line Convention reg. 25", what: "Bulwark or guard rail height.", confirmed: false}
+
+unknown:
+  - {ref: "None until identified", what: "Keel could not identify this space. Name it first, then its rules can be listed.", confirmed: true}

@@ -1,0 +1,117 @@
+# Escape route rules. Summaries are our own words; read the source for the binding text.
+# value_status: verified = checked in the cited source; assumed = placeholder, allowed by Meyer.
+# RCRV is a research vessel, not a cruise ship: these rules are applied for demonstration.
+
+- id: ESC-CORRIDOR-WIDTH
+  title: Minimum clear width of corridors on escape routes
+  source: "SOLAS II-2/13.3.3.5 refers to FSS Code ch.13"
+  ref_url: "https://assets.publishing.service.gov.uk/media/5a80f3c6ed915d74e33fd543/Regulation_13_-_Means_of_Escape.pdf"
+  type: numeric
+  scope: escape
+  applies_to: [corridor]
+  parameter: clear_width
+  operator: ">="
+  value_mm: 900
+  value_status: assumed
+  check: corridor_width
+  interpretation_note: >-
+    SOLAS defers the width to the FSS Code. 900 mm is our placeholder for the FSS Code
+    minimum, which we have not read in the original. Handrails and door trim are normally
+    allowed to project slightly, so thin wall symbols are ignored in this measurement.
+
+- id: ESC-STAIR-WIDTH
+  title: Minimum clear width of stairways on escape routes
+  source: "FSS Code ch.13"
+  ref_url: ""
+  type: numeric
+  scope: escape
+  applies_to: [stair]
+  parameter: clear_width
+  operator: ">="
+  value_mm: 900
+  value_status: assumed
+  check: stair_width
+  interpretation_note: >-
+    900 mm is our placeholder for the FSS Code minimum. SOLAS II-2/13.3.2.1.2 uses 800 mm
+    for a sole means of escape under a dispensation, so 900 mm is not the only possible value.
+
+- id: ESC-STAIR-CAPACITY
+  title: Stair width must carry the persons it serves
+  source: "IMO Res. A.757(18): W = (N1 + N2) x 10 mm"
+  ref_url: "https://wwwcdn.imo.org/localresources/en/KnowledgeCentre/IndexofIMOResolutions/AssemblyDocuments/A.757(18).pdf"
+  type: numeric
+  scope: escape
+  applies_to: [stair]
+  parameter: capacity_width
+  operator: ">="
+  value_mm_per_person: 10
+  value_status: verified
+  check: stair_capacity
+  interpretation_note: >-
+    For two decks joined, N1 and N2 are the persons on the two decks. Persons on other
+    decks are an input, because this drawing shows one deck. The result depends on it.
+
+- id: ESC-DOOR-WIDTH
+  title: Minimum clear width of doors on escape routes
+  source: "Assumed, for demonstration"
+  ref_url: ""
+  type: numeric
+  scope: escape
+  applies_to: [corridor]
+  parameter: door_clear_width
+  operator: ">="
+  value_mm: 700
+  value_status: assumed
+  check: escape_door_width
+  interpretation_note: >-
+    Assumed value. Clear width is estimated as leaf width minus a frame allowance, because
+    the drawing does not dimension door stops. Small doors under 600 mm are lockers and
+    are not treated as escape doors.
+
+- id: ESC-DOOR-SWING
+  title: Doors on escape routes open in the direction of escape
+  source: "SOLAS II-2/13.3.1.5"
+  ref_url: "https://assets.publishing.service.gov.uk/media/5a80f3c6ed915d74e33fd543/Regulation_13_-_Means_of_Escape.pdf"
+  type: geometric
+  scope: escape
+  applies_to: [corridor, stair]
+  parameter: swing_direction
+  value_status: verified
+  check: door_swing
+  interpretation_note: >-
+    The rule says "in general". Individual cabin doors may open into the cabin so they do
+    not hit people in the corridor, and escape trunk doors may open out of the trunk. So
+    cabin doors are exempt here.
+
+- id: ESC-TWO-MEANS
+  title: At least two means of escape from each accommodation zone
+  source: "SOLAS II-2/13.3.2.2"
+  ref_url: "https://assets.publishing.service.gov.uk/media/5a80f3c6ed915d74e33fd543/Regulation_13_-_Means_of_Escape.pdf"
+  type: geometric
+  scope: escape
+  applies_to: [corridor]
+  parameter: independent_routes
+  minimum_routes: 2
+  value_status: verified
+  check: two_means
+  interpretation_note: >-
+    The regulation is written per main vertical zone or similar restricted space, for
+    passenger ships. Here a corridor stands for the group of spaces it serves. Whether two
+    exits are truly independent also depends on fire zoning, which this drawing lacks.
+
+- id: ESC-DEAD-END
+  title: Maximum length of a dead-end corridor
+  source: "SOLAS II-2/13.3.3.4, recess exception in 13.3.1"
+  ref_url: "https://assets.publishing.service.gov.uk/media/5a80f3c6ed915d74e33fd543/Regulation_13_-_Means_of_Escape.pdf"
+  type: numeric
+  scope: escape
+  applies_to: [corridor]
+  parameter: dead_end_length
+  operator: "<="
+  value_mm: 7000
+  value_status: verified
+  check: dead_end
+  interpretation_note: >-
+    The 7 m limit sits in the cargo ship section; passenger ships are stricter in parts of
+    the regulation. A part of a corridor no deeper than its width counts as a recess, not a
+    dead end, so the local width is subtracted.

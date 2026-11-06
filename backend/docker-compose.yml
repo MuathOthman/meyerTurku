@@ -1,0 +1,26 @@
+# Default: the API only, using the LLM set in .env (or none).
+# Fully local, no data leaves the machine:
+#   KEEL_LLM_PROVIDER=ollama docker compose --profile local up
+services:
+  api:
+    build: .
+    ports: ["8000:8000"]
+    environment:
+      KEEL_LLM_PROVIDER: ${KEEL_LLM_PROVIDER:-openai}
+      KEEL_LLM_MODEL: ${KEEL_LLM_MODEL:-}
+      api_chatgpt: ${api_chatgpt:-}
+      api_gemini: ${api_gemini:-}
+      OLLAMA_URL: http://ollama:11434
+    volumes:
+      - keel-data:/app/data/raw
+      - keel-processed:/app/data/processed
+
+  ollama:
+    profiles: [local]
+    image: ollama/ollama:0.5.7
+    volumes: [ollama-models:/root/.ollama]
+
+volumes:
+  keel-data:
+  keel-processed:
+  ollama-models:

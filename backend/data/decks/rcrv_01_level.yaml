@@ -1,0 +1,47 @@
+# RCRV 01 Level, plan 8-4C, drawing 6096-070-001 rev J, PDF page index 9.
+name: "RCRV 01 Level (plan 8-4C)"
+pdf: ../raw/rcrv_ga.pdf
+page_index: 9
+plan_region: [180, 85, 1010, 320]
+label_region: [180, 70, 1010, 330]
+
+calibration:
+  region: [0, 80, 1224, 320]
+  frame_spacing_ft: 2      # LWL 184'-0" (vessel particulars) over frames 0 to 92 on the ruler
+  beam_ft: 41              # BEAM 41'-0" (vessel particulars), used as the independent check
+
+# Brief: 33 berths in total. This deck's berths are counted from the labels below.
+persons_other_decks: 17
+
+# Hand-read from the drawing, standing in for an engineer's confirmation of the OCR labels.
+# Anchors are page points. Berths: particulars list science cabins as doubles. Single
+# berths for CHIEF SCIENCE and MARINE TECH are our reading of the bed symbols.
+reviewed_labels:
+  - {anchor: [736, 175], name: PASSAGEWAY, compartment: 01-15-2, category: corridor}
+  - {anchor: [657, 194], name: STAIRWAY, compartment: 1-25-0, category: stair}
+  - {anchor: [707, 197], name: STAIRWAY, compartment: 01-24-0, category: stair}
+  - {anchor: [513, 125], name: 01 LEVEL BOARDING LOCATION, category: open_deck}
+  - {anchor: [869, 195], name: MOORING EQUIPMENT, compartment: 01-0-0, category: open_deck}
+  - {anchor: [600, 135], name: SCIENCE, compartment: 01-36-2, category: cabin, berths: 2}
+  - {anchor: [639, 134], name: SCIENCE, compartment: 01-31-2, category: cabin, berths: 2}
+  - {anchor: [686, 136], name: SCIENCE, compartment: 01-26-2, category: cabin, berths: 2}
+  - {anchor: [731, 139], name: SCIENCE, compartment: 01-21-2, category: cabin, berths: 2}
+  - {anchor: [778, 219], name: SCIENCE, compartment: 01-15-0, category: cabin, berths: 2}
+  - {anchor: [770, 142], name: CHIEF SCIENCE, compartment: 01-15-4, category: cabin, berths: 1}
+  - {anchor: [733, 228], name: MARINE TECH, compartment: 01-20-0, category: cabin, berths: 1}
+  - {anchor: [651, 231], name: CREW DOUBLE, compartment: 01-29-0, category: cabin, berths: 2}
+  - {anchor: [611, 229], name: CREW DOUBLE, compartment: 01-34-0, category: cabin, berths: 2}
+  - {anchor: [569, 221], name: HOSPITAL, compartment: 01-39-1, category: medical}
+  - {anchor: [529, 153], name: TECH LKR, compartment: 01-45-2, category: service}
+  - {anchor: [560, 160], name: LAUNDRY, compartment: 01-40-2, category: service}
+  - {anchor: [624, 198], name: CG LKR, compartment: 01-35-0, category: service}
+  - {anchor: [810, 143], name: DAMAGE CONTROL LOCKER, compartment: 01-13-2, category: service}
+  - {anchor: [811, 224], name: "SHIP'S HAZ MAT", compartment: 01-13-1, category: service}
+  - {anchor: [947, 192], name: DECK LOCKER, category: service}
+  - {anchor: [355, 244], name: DECK OPERATIONS STATION, compartment: 01-63-1, category: service}
+  - {anchor: [572, 120], name: EQUIP HVAC, compartment: 01-40-4, category: machinery}
+  - {anchor: [699, 255], name: HVAC EQUIP, compartment: 01-24-1, category: machinery}
+  - {anchor: [461, 149], name: VENTILATION, compartment: 01-50-2, category: machinery}
+  - {anchor: [808, 246], name: VENTILATION, compartment: 01-13-3, category: machinery}
+  - {anchor: [582, 195], name: TRUNK, compartment: 01-39-0, category: machinery}
+  - {anchor: [646, 197], name: TRUNK, compartment: 1-32-0, category: machinery}

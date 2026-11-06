@@ -1,0 +1,19 @@
+Metadata-Version: 2.4
+Name: keel
+Version: 0.1.0
+Summary: Deterministic compliance checker for ship general arrangement drawings
+Requires-Python: >=3.11
+Requires-Dist: pymupdf>=1.24
+Requires-Dist: shapely>=2.0
+Requires-Dist: networkx>=3.2
+Requires-Dist: pydantic>=2.6
+Requires-Dist: typer>=0.12
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: fastapi>=0.110
+Requires-Dist: uvicorn>=0.29
+Requires-Dist: pillow>=10.0
+Requires-Dist: numpy>=1.26
+Requires-Dist: certifi>=2024.2.2
+Requires-Dist: rapidocr-onnxruntime>=1.3
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"

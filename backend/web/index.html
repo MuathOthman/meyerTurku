@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keel</title>
+<link rel="icon" href="data:,">
+<style>
+:root{
+  --bg:#f4f5f6;--panel:#fff;--ink:#1a2026;--muted:#5d6873;--line:#dde1e5;--accent:#0b5c8a;
+  --fail:#c81e1e;--fail-bg:#fdecec;--review:#a85f00;--review-bg:#fff3e0;--pass:#14733a;--pass-bg:#e8f5ec;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+h1{font-size:18px;margin:0}
+header span{color:var(--muted)}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+label{color:var(--muted)}
+select,button{font:inherit;padding:6px 10px;border:1px solid #b9c0c7;border-radius:5px;background:#fff;color:var(--ink);cursor:pointer;max-width:100%}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button:disabled{opacity:.55;cursor:wait}
+.counts{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
+.pill{padding:3px 9px;border-radius:12px;font-weight:600;font-size:13px}
+.FAIL{color:var(--fail);background:var(--fail-bg)}
+.NEEDS_REVIEW{color:var(--review);background:var(--review-bg)}
+.PASS{color:var(--pass);background:var(--pass-bg)}
+main{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:12px;padding:12px 16px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;min-width:0}
+#view{position:relative;overflow:auto;max-height:calc(100vh - 150px)}
+#stage{position:relative;width:100%;min-width:900px}
+#stage img,#stage svg{display:block;width:100%;height:auto}
+#stage svg{position:absolute;inset:0;height:100%}
+#list{overflow:auto;max-height:calc(100vh - 150px)}
+.note{padding:10px 12px;color:var(--muted);border-bottom:1px solid var(--line);font-size:13px}
+.finding{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);border-radius:0;background:#fff;padding:10px 12px;cursor:pointer}
+.finding:hover,.finding.on{background:#eef4f8}
+.finding .top{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:3px}
+.finding b{font-weight:600}
+.tag{font-size:11px;font-weight:700;padding:1px 6px;border-radius:3px}
+.why{margin:3px 0 0}
+.detail{display:none;margin-top:6px;font-size:12.5px;color:var(--muted)}
+.finding.on .detail{display:block}
+.detail div{margin-top:3px}
+.ai{color:#3b3f8f;margin-top:5px}
+.assumed{color:var(--review);font-weight:600}
+dialog{border:1px solid var(--line);border-radius:8px;max-width:760px;width:calc(100% - 32px);padding:18px}
+dialog h2{margin:0 0 8px;font-size:17px}
+dialog h3{margin:14px 0 4px;font-size:14px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+td,th{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.big{font-size:15px;margin:4px 0}
+ul{margin:4px 0;padding-left:18px}
+@media(max-width:900px){main{grid-template-columns:minmax(0,1fr)}#view,#list{max-height:none}.counts{margin-left:0}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Keel</h1><span>AI reads, code measures, engineer decides.</span>
+  <span id="deck"></span>
+  <a href="/analyze" style="margin-left:auto;color:var(--accent)">Analyse a new drawing</a>
+</header>
+<div class="bar">
+  <label for="scenario">Design state</label>
+  <select id="scenario"><option value="">Original drawing</option></select>
+  <button id="ai">Add AI notes</button>
+  <button id="evalBtn">Accuracy report</button>
+  <label for="cabins">Add cabins</label>
+  <input id="cabins" type="number" min="1" max="200" value="6" style="width:64px;font:inherit;padding:5px">
+  <button id="impactBtn">Show impact</button>
+  <div class="counts" id="counts"></div>
+</div>
+<main>
+  <section class="panel" id="view"><div id="stage">
+    <img id="drawing" src="/api/drawing.png" alt="Deck plan">
+    <svg id="overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div></section>
+  <section class="panel" id="list"></section>
+</main>
+<dialog id="dlg"><div id="dlgBody"></div><p><button onclick="document.getElementById('dlg').close()">Close</button></p></dialog>
+<script>
+const $ = id => document.getElementById(id);
+const colors = {FAIL:'#c81e1e',NEEDS_REVIEW:'#e08600',PASS:'#14733a'};
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let meta, findings = [], selected = null;
+
+async function getJSON(url){
+  const r = await fetch(url);
+  if(!r.ok) throw new Error(`${url}: ${r.status}`);
+  return r.json();
+}
+
+function drawOverlay(){
+  const svg = $('overlay');
+  const shown = selected === null ? findings.filter(f => f.verdict !== 'PASS') : [findings[selected]];
+  let out = '';
+  for(const f of shown){
+    const c = colors[f.verdict];
+    if(f.overlay_polygon_pt.length){
+      out += `<polygon points="${f.overlay_polygon_pt.map(p=>p.join(',')).join(' ')}" fill="${c}" fill-opacity=".16" stroke="${c}" stroke-width=".5"/>`;
+    }
+    for(const line of f.overlay_lines_pt){
+      out += `<polyline points="${line.map(p=>p.join(',')).join(' ')}" fill="none" stroke="${c}" stroke-width="1.4"/>`;
+    }
+    out += `<circle cx="${f.location_pt[0]}" cy="${f.location_pt[1]}" r="5" fill="none" stroke="${c}" stroke-width="1"/>`;
+  }
+  svg.innerHTML = out;
+}
+
+function renderList(data){
+  $('counts').innerHTML = ['FAIL','NEEDS_REVIEW','PASS'].map(k => `<span class="pill ${k}">${k.replace('_',' ')} ${data.counts[k]}</span>`).join('');
+  let html = '';
+  if(data.injected.length) html += `<div class="note">Injected for testing: ${esc(data.injected.join(', '))}</div>`;
+  if(data.note_error) html += `<div class="note">${esc(data.note_error)}</div>`;
+  html += findings.map((f,i) => `
+    <button class="finding${i===selected?' on':''}" data-i="${i}">
+      <div class="top"><span class="tag ${f.verdict}">${f.verdict.replace('_',' ')}</span><b>${esc(f.rule_id)}</b><span>${esc(f.subject_name)}</span></div>
+      <p class="why">${esc(f.why)}</p>
+      ${f.explanation ? `<div class="ai">AI note: ${esc(f.explanation)}</div>` : ''}
+      <div class="detail">
+        ${f.measured_display ? `<div>Measured ${esc(f.measured_display)}, required ${esc(f.operator)} ${esc(f.required_display)}, tolerance ${f.tolerance_mm.toFixed(0)} mm</div>` : ''}
+        <div>Source: ${esc(f.source)}. Value <span class="${f.value_status==='assumed'?'assumed':''}">${esc(f.value_status)}</span></div>
+        <div>Evidence: ${esc(f.source_pdf)}, page index ${f.page_index}, at (${f.location_pt[0].toFixed(1)}, ${f.location_pt[1].toFixed(1)}) pt</div>
+        ${f.assumptions.map(a=>`<div>Assumes: ${esc(a)}</div>`).join('')}
+        ${f.interpretation_note ? `<div>In practice: ${esc(f.interpretation_note)}</div>` : ''}
+      </div>
+    </button>`).join('');
+  $('list').innerHTML = html;
+  document.querySelectorAll('.finding').forEach(b => b.onclick = () => {
+    const i = Number(b.dataset.i);
+    selected = selected === i ? null : i;
+    document.querySelectorAll('.finding').forEach(x => x.classList.toggle('on', Number(x.dataset.i) === selected));
+    drawOverlay();
+  });
+}
+
+async function load(explain=false){
+  const s = $('scenario').value;
+  const q = new URLSearchParams(); if(s) q.set('scenario', s); if(explain) q.set('explain','true');
+  $('ai').disabled = true;
+  try{
+    const data = await getJSON('/api/findings?' + q);
+    findings = data.findings; selected = null;
+    renderList(data); drawOverlay();
+  }catch(e){ $('list').innerHTML = `<div class="note">Could not load findings: ${esc(e.message)}</div>`; }
+  $('ai').disabled = false;
+}
+
+function dialog(html){ $('dlgBody').innerHTML = html; $('dlg').showModal(); }
+
+async function showEval(){
+  dialog('<h2>Accuracy report</h2><p>Running every case...</p>');
+  const e = await getJSON('/api/eval');
+  const rows = e.cases.map(c => `<tr><td>${c.passed?'ok':'<b style="color:#c81e1e">MISS</b>'}</td><td>${esc(c.kind)}</td><td>${esc(c.name)}</td><td>${esc(c.detail)}</td><td>${c.measured_mm!=null?c.measured_mm.toFixed(0)+' mm':''}</td></tr>`).join('');
+  dialog(`<h2>Accuracy report</h2>
+    <p class="big">Injected defects found: <b>${e.defects_found} of ${e.defects_total}</b>. False alarms: <b>${e.false_alarms}</b> (${e.controls_total} controls).</p>
+    <p>Original drawing: FAIL ${e.baseline.FAIL}, NEEDS REVIEW ${e.baseline.NEEDS_REVIEW}, PASS ${e.baseline.PASS}.</p>
+    <p style="color:#5d6873">Defects are injected into the ship model, then measured by the same code as the real drawing.</p>
+    <table><tr><th></th><th>Kind</th><th>Case</th><th>Verdict</th><th>Measured</th></tr>${rows}</table>`);
+}
+
+async function showImpact(){
+  const n = $('cabins').value;
+  const r = await getJSON(`/api/impact?count=${encodeURIComponent(n)}`);
+  const cap = r.stair_capacity;
+  dialog(`<h2>Adding ${r.count} cabins</h2>
+    <p class="big">${r.persons_added} more persons, ${r.persons_total} in total.</p>
+    ${r.newly_failing.length ? r.newly_failing.map(f=>`<p class="pill FAIL" style="display:inline-block">New FAIL: ${esc(f.rule_id)}</p>`).join('') : '<p class="pill PASS" style="display:inline-block">No new FAIL</p>'}
+    ${cap ? `<p>${esc(cap.why)}</p>` : ''}
+    <h3>Rules that now matter</h3><ul>${r.rules_that_apply.map(x=>`<li><b>${esc(x.ref)}</b>: ${esc(x.why)}</li>`).join('')}</ul>
+    <h3>Notify</h3><ul>${r.notify.map(x=>`<li><b>${esc(x.discipline)}</b>: ${esc(x.why)}</li>`).join('')}</ul>
+    <p style="color:#5d6873">These are reminders. Nothing is calculated for these systems, because Keel has no system data.</p>`);
+}
+
+(async () => {
+  meta = await getJSON('/api/meta');
+  $('deck').textContent = `${meta.deck} · ${meta.spaces} spaces · ${meta.doors} doors · ${meta.mm_per_pt.toFixed(2)} mm/pt`;
+  const [x0,y0,x1,y1] = meta.region;
+  $('overlay').setAttribute('viewBox', `${x0} ${y0} ${x1-x0} ${y1-y0}`);
+  for(const s of meta.scenarios){ const o = document.createElement('option'); o.textContent = s; o.value = s; $('scenario').append(o); }
+  $('scenario').onchange = () => load();
+  $('ai').onclick = () => load(true);
+  $('ai').disabled = !meta.llm; if(!meta.llm) $('ai').title = 'No LLM configured';
+  $('evalBtn').onclick = showEval;
+  $('impactBtn').onclick = showImpact;
+  await load();
+})();
+</script>
+</body>
+</html>
