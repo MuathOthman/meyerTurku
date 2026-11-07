@@ -1,6 +1,7 @@
 import { Minus, Plus } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Verdict } from "@/lib/api";
+import { layoutPins } from "@/lib/pinLayout";
 
 export type PlanGeometry = {
   image: string;
@@ -38,6 +39,35 @@ export function PlanView({
   const view = useRef<HTMLDivElement>(null);
   const focusX = focus?.[0];
   const focusY = focus?.[1];
+  const stage = useRef<HTMLDivElement>(null);
+  const [stageWidth, setStageWidth] = useState(0);
+
+  // Labels keep their size on screen, so where they fit depends on the drawn size of the plan.
+  useLayoutEffect(() => {
+    const element = stage.current;
+    if (!element) return;
+    setStageWidth(element.getBoundingClientRect().width);
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() =>
+      setStageWidth(element.getBoundingClientRect().width),
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  const pinById = useMemo(() => new Map(pins.map((pin) => [pin.id, pin])), [pins]);
+  const placed = useMemo(() => {
+    const scale = stageWidth / plan.width;
+    return layoutPins(
+      pins.map((pin) => ({
+        id: pin.id,
+        x: (pin.x - plan.x) * scale,
+        y: (pin.y - plan.y) * scale,
+      })),
+      stageWidth,
+      plan.height * scale,
+    );
+  }, [pins, stageWidth, plan.x, plan.y, plan.width, plan.height]);
 
   useEffect(() => {
     const box = view.current;
@@ -75,7 +105,7 @@ export function PlanView({
             Could not load the drawing.
           </p>
         )}
-        <div className="plan-stage" style={{ width: `${zoom * 100}%` }}>
+        <div className="plan-stage" ref={stage} style={{ width: `${zoom * 100}%` }}>
           <img
             src={plan.image}
             alt={alt}
@@ -85,23 +115,39 @@ export function PlanView({
           <svg viewBox={`${plan.x} ${plan.y} ${plan.width} ${plan.height}`} aria-label="Overlays">
             {children}
           </svg>
-          {pins.map((pin) => (
-            <button
-              key={pin.id}
-              className="pin"
-              data-verdict={pin.verdict}
-              aria-pressed={pin.id === selectedPin}
-              title={pin.label}
-              style={{
-                left: `${((pin.x - plan.x) / plan.width) * 100}%`,
-                top: `${((pin.y - plan.y) / plan.height) * 100}%`,
-              }}
-              onClick={() => onSelectPin(pin.id)}
-            >
-              <span className="pin-dot" />
-              {pin.id}
-            </button>
-          ))}
+          <svg className="pin-leaders" aria-hidden="true">
+            {placed.map((p) => {
+              const verdict = pinById.get(p.id)?.verdict;
+              return (
+                <g
+                  key={p.id}
+                  data-verdict={verdict}
+                  data-selected={p.id === selectedPin}
+                  className="pin-leader"
+                >
+                  {p.moved && <line x1={p.anchorX} y1={p.anchorY} x2={p.x} y2={p.y} />}
+                  {p.moved && <circle cx={p.anchorX} cy={p.anchorY} r={4} />}
+                </g>
+              );
+            })}
+          </svg>
+          {placed.map((p) => {
+            const pin = pinById.get(p.id);
+            if (!pin) return null;
+            return (
+              <button
+                key={p.id}
+                className="pin"
+                data-verdict={pin.verdict}
+                aria-pressed={p.id === selectedPin}
+                title={pin.label}
+                style={{ left: p.x, top: p.y, width: p.width, height: p.height }}
+                onClick={() => onSelectPin(p.id)}
+              >
+                {p.id}
+              </button>
+            );
+          })}
         </div>
       </div>
     </section>
