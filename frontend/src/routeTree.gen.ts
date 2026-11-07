@@ -14,8 +14,14 @@ import { Route as AppRouteImport } from './routes/app'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppLogRouteImport } from './routes/app.log'
 import { Route as AppNewRouteImport } from './routes/app.new'
+import { Route as AppReportsRouteImport } from './routes/app.reports'
 import { Route as AppRulesRouteImport } from './routes/app.rules'
+import { Route as AppWallRouteImport } from './routes/app.wall'
+import { Route as AppAgentsAgentIdRouteImport } from './routes/app.agents.$agentId'
 import { Route as AppAnalysisJobIdRouteImport } from './routes/app.analysis.$jobId'
+import { Route as AppProjectsNewRouteImport } from './routes/app.projects.new'
+import { Route as AppProjectsProjectIdFilesRouteImport } from './routes/app.projects.$projectId.files'
+import { Route as AppProjectsProjectIdRulesRouteImport } from './routes/app.projects.$projectId.rules'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -42,9 +48,24 @@ const AppNewRoute = AppNewRouteImport.update({
   path: '/new',
   getParentRoute: () => AppRoute,
 } as any)
+const AppReportsRoute = AppReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppRulesRoute = AppRulesRouteImport.update({
   id: '/rules',
   path: '/rules',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppWallRoute = AppWallRouteImport.update({
+  id: '/wall',
+  path: '/wall',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAgentsAgentIdRoute = AppAgentsAgentIdRouteImport.update({
+  id: '/agents/$agentId',
+  path: '/agents/$agentId',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAnalysisJobIdRoute = AppAnalysisJobIdRouteImport.update({
@@ -52,23 +73,52 @@ const AppAnalysisJobIdRoute = AppAnalysisJobIdRouteImport.update({
   path: '/analysis/$jobId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppProjectsNewRoute = AppProjectsNewRouteImport.update({
+  id: '/projects/new',
+  path: '/projects/new',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProjectsProjectIdFilesRoute =
+  AppProjectsProjectIdFilesRouteImport.update({
+    id: '/projects/$projectId/files',
+    path: '/projects/$projectId/files',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppProjectsProjectIdRulesRoute =
+  AppProjectsProjectIdRulesRouteImport.update({
+    id: '/projects/$projectId/rules',
+    path: '/projects/$projectId/rules',
+    getParentRoute: () => AppRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/app/log': typeof AppLogRoute
   '/app/new': typeof AppNewRoute
+  '/app/reports': typeof AppReportsRoute
   '/app/rules': typeof AppRulesRoute
+  '/app/wall': typeof AppWallRoute
   '/app/': typeof AppIndexRoute
+  '/app/agents/$agentId': typeof AppAgentsAgentIdRoute
   '/app/analysis/$jobId': typeof AppAnalysisJobIdRoute
+  '/app/projects/new': typeof AppProjectsNewRoute
+  '/app/projects/$projectId/files': typeof AppProjectsProjectIdFilesRoute
+  '/app/projects/$projectId/rules': typeof AppProjectsProjectIdRulesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/app/log': typeof AppLogRoute
   '/app/new': typeof AppNewRoute
+  '/app/reports': typeof AppReportsRoute
   '/app/rules': typeof AppRulesRoute
+  '/app/wall': typeof AppWallRoute
   '/app': typeof AppIndexRoute
+  '/app/agents/$agentId': typeof AppAgentsAgentIdRoute
   '/app/analysis/$jobId': typeof AppAnalysisJobIdRoute
+  '/app/projects/new': typeof AppProjectsNewRoute
+  '/app/projects/$projectId/files': typeof AppProjectsProjectIdFilesRoute
+  '/app/projects/$projectId/rules': typeof AppProjectsProjectIdRulesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -76,9 +126,15 @@ export interface FileRoutesById {
   '/app': typeof AppRouteWithChildren
   '/app/log': typeof AppLogRoute
   '/app/new': typeof AppNewRoute
+  '/app/reports': typeof AppReportsRoute
   '/app/rules': typeof AppRulesRoute
+  '/app/wall': typeof AppWallRoute
   '/app/': typeof AppIndexRoute
+  '/app/agents/$agentId': typeof AppAgentsAgentIdRoute
   '/app/analysis/$jobId': typeof AppAnalysisJobIdRoute
+  '/app/projects/new': typeof AppProjectsNewRoute
+  '/app/projects/$projectId/files': typeof AppProjectsProjectIdFilesRoute
+  '/app/projects/$projectId/rules': typeof AppProjectsProjectIdRulesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -87,26 +143,44 @@ export interface FileRouteTypes {
     | '/app'
     | '/app/log'
     | '/app/new'
+    | '/app/reports'
     | '/app/rules'
+    | '/app/wall'
     | '/app/'
+    | '/app/agents/$agentId'
     | '/app/analysis/$jobId'
+    | '/app/projects/new'
+    | '/app/projects/$projectId/files'
+    | '/app/projects/$projectId/rules'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/app/log'
     | '/app/new'
+    | '/app/reports'
     | '/app/rules'
+    | '/app/wall'
     | '/app'
+    | '/app/agents/$agentId'
     | '/app/analysis/$jobId'
+    | '/app/projects/new'
+    | '/app/projects/$projectId/files'
+    | '/app/projects/$projectId/rules'
   id:
     | '__root__'
     | '/'
     | '/app'
     | '/app/log'
     | '/app/new'
+    | '/app/reports'
     | '/app/rules'
+    | '/app/wall'
     | '/app/'
+    | '/app/agents/$agentId'
     | '/app/analysis/$jobId'
+    | '/app/projects/new'
+    | '/app/projects/$projectId/files'
+    | '/app/projects/$projectId/rules'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -151,11 +225,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppNewRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/reports': {
+      id: '/app/reports'
+      path: '/reports'
+      fullPath: '/app/reports'
+      preLoaderRoute: typeof AppReportsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/rules': {
       id: '/app/rules'
       path: '/rules'
       fullPath: '/app/rules'
       preLoaderRoute: typeof AppRulesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/wall': {
+      id: '/app/wall'
+      path: '/wall'
+      fullPath: '/app/wall'
+      preLoaderRoute: typeof AppWallRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/agents/$agentId': {
+      id: '/app/agents/$agentId'
+      path: '/agents/$agentId'
+      fullPath: '/app/agents/$agentId'
+      preLoaderRoute: typeof AppAgentsAgentIdRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/analysis/$jobId': {
@@ -165,23 +260,56 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAnalysisJobIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/projects/new': {
+      id: '/app/projects/new'
+      path: '/projects/new'
+      fullPath: '/app/projects/new'
+      preLoaderRoute: typeof AppProjectsNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/projects/$projectId/files': {
+      id: '/app/projects/$projectId/files'
+      path: '/projects/$projectId/files'
+      fullPath: '/app/projects/$projectId/files'
+      preLoaderRoute: typeof AppProjectsProjectIdFilesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/projects/$projectId/rules': {
+      id: '/app/projects/$projectId/rules'
+      path: '/projects/$projectId/rules'
+      fullPath: '/app/projects/$projectId/rules'
+      preLoaderRoute: typeof AppProjectsProjectIdRulesRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
   AppLogRoute: typeof AppLogRoute
   AppNewRoute: typeof AppNewRoute
+  AppReportsRoute: typeof AppReportsRoute
   AppRulesRoute: typeof AppRulesRoute
+  AppWallRoute: typeof AppWallRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppAgentsAgentIdRoute: typeof AppAgentsAgentIdRoute
   AppAnalysisJobIdRoute: typeof AppAnalysisJobIdRoute
+  AppProjectsNewRoute: typeof AppProjectsNewRoute
+  AppProjectsProjectIdFilesRoute: typeof AppProjectsProjectIdFilesRoute
+  AppProjectsProjectIdRulesRoute: typeof AppProjectsProjectIdRulesRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppLogRoute: AppLogRoute,
   AppNewRoute: AppNewRoute,
+  AppReportsRoute: AppReportsRoute,
   AppRulesRoute: AppRulesRoute,
+  AppWallRoute: AppWallRoute,
   AppIndexRoute: AppIndexRoute,
+  AppAgentsAgentIdRoute: AppAgentsAgentIdRoute,
   AppAnalysisJobIdRoute: AppAnalysisJobIdRoute,
+  AppProjectsNewRoute: AppProjectsNewRoute,
+  AppProjectsProjectIdFilesRoute: AppProjectsProjectIdFilesRoute,
+  AppProjectsProjectIdRulesRoute: AppProjectsProjectIdRulesRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

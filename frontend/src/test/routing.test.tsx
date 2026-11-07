@@ -5,10 +5,20 @@ import { routeTree } from "@/routeTree.gen";
 
 describe("routes", () => {
   const router = createRouter({ routeTree });
-  it.each(["/", "/app", "/app/new", "/app/rules", "/app/log", "/app/analysis/abc"])(
-    "%s has a page",
-    (path) => {
-      expect(router.matchRoutes(path).at(-1)?.routeId).not.toBe(rootRouteId);
-    },
-  );
+  it.each([
+    "/",
+    "/app",
+    "/app/new",
+    "/app/rules",
+    "/app/log",
+    "/app/analysis/abc",
+    "/app/projects/new",
+    "/app/projects/default/files",
+    "/app/projects/default/rules",
+    "/app/reports",
+    "/app/wall",
+    "/app/agents/check",
+  ])("%s has a page", (path) => {
+    expect(router.matchRoutes(path).at(-1)?.routeId).not.toBe(rootRouteId);
+  });
 });

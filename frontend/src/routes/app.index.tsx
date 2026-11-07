@@ -12,6 +12,7 @@ import {
   useSpaces,
   type Verdict,
 } from "@/lib/api";
+import { DEFAULT_PROJECT, useProject } from "@/lib/floors";
 
 export const Route = createFileRoute("/app/")({
   head: () => ({ meta: [{ title: "Checked deck · Keel" }] }),
@@ -30,6 +31,7 @@ function DeckPage() {
   const [showSpaces, setShowSpaces] = useState(false);
 
   const meta = useMeta();
+  const project = useProject(DEFAULT_PROJECT);
   const findingsQuery = useFindings(scenario, explain);
   const spaces = useSpaces();
   const decisionLog = useDecisions();
@@ -81,7 +83,7 @@ function DeckPage() {
     <>
       <header className="page-head">
         <div>
-          <span className="crumb">Checked deck · demo</span>
+          <span className="crumb">{project?.name ?? "Project"} · Model · demo deck</span>
           <h1>{m.deck}</h1>
           <p className="muted">
             {m.spaces} spaces · {m.doors} doors · {m.unresolved_arcs} door arcs left for review ·{" "}

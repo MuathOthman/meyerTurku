@@ -33,9 +33,17 @@ from keel.inject import apply_defect
 from keel.llm import get_llm
 from keel.model import Deck
 from keel.pipeline import build_deck
+from keel.projects import DEFAULT_PROJECT, ProjectInput, add_project, get_project, read_projects, set_rule_selection
 from keel.report import sort_findings
 from keel.rules import SHIP_TYPES, load_rules
 from keel.sheet import DeckPlan, SheetScale, find_deck_plans, sheet_scale
+from keel.sources import (
+    SourceInput,
+    add_source,
+    delete_source,
+    read_sources,
+    source_file,
+)
 from keel.verdict import Verdict
 
 BACKEND = Path(__file__).resolve().parents[1]
@@ -47,6 +55,9 @@ IMPACT_MAP = BACKEND / "config/impact_map.yaml"
 # The built React app (frontend/). During development Vite serves it and proxies /api here.
 FRONTEND = Path(os.environ.get("KEEL_FRONTEND_DIST", BACKEND.parent / "frontend/dist"))
 DECISIONS = BACKEND / "data/processed/decisions.json"
+SOURCES = BACKEND / "data/processed/sources"
+# Projects, each with the rules the engineer chose. Findings on other rules are not shown.
+PROJECTS = BACKEND / "data/processed/projects.json"
 
 log = logging.getLogger(__name__)
 
@@ -146,6 +157,7 @@ def run_analysis(
             image=f"/api/analyze/{job}/numbered.jpg",
             plan_image=f"/api/analyze/{job}/plan.jpg",
             deck=state.get("deck"),
+            project=state.get("project", DEFAULT_PROJECT),
             created_at=state["created_at"],
         )
         temporary = folder / "result.tmp"
@@ -168,8 +180,11 @@ def analyze_upload(
     mm_per_unit: float | None = Form(None),
     use_ai: bool = Form(True),
     ship_type: str = Form("passenger"),
+    project: str = Form(DEFAULT_PROJECT),
 ) -> dict:
     """Store an uploaded drawing under a generated name and queue it. Poll .../status for progress."""
+    if get_project(PROJECTS, project) is None:
+        raise HTTPException(404, f"No project {project!r}.")
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in UPLOAD_TYPES:
         raise HTTPException(400, f"Unsupported file type. Use one of: {sorted(UPLOAD_TYPES)}")
@@ -196,6 +211,7 @@ def analyze_upload(
             "error": None,
             "source": name,
             "deck": deck.name if deck else None,
+            "project": project,
             "page": page,
             "created_at": created,
         }
@@ -245,22 +261,34 @@ def job_folder(job: str) -> Path:
 def list_analyses() -> list[dict]:
     """Running and saved analyses, newest first. An abandoned run has no result.json and is skipped."""
     summaries = [
-        {**{k: job[k] for k in ("id", "source", "page", "created_at", "status")}, "identified": 0, "unidentified": 0}
+        {
+            **{k: job[k] for k in ("id", "source", "deck", "project", "page", "created_at", "status")},
+            "ship_type": None,
+            "identified": 0,
+            "unidentified": 0,
+            "counts": None,
+        }
         for job in JOBS.values()
         if job["status"] == "running"
     ]
     for path in RESULTS.glob("*/result.json") if RESULTS.is_dir() else []:
         body = json.loads(path.read_text())
         unidentified = sum(s["name"] == "Unidentified space" for s in body["spaces"])
+        owner = body.get("project", DEFAULT_PROJECT)
+        measured = [f for f in _selected(body.get("findings") or [], owner) if not f.get("could_not_check")]
         summaries.append(
             {
                 "id": body["id"],
                 "source": body["source"],
+                "deck": body.get("deck"),
+                "project": owner,
                 "page": body["page"],
                 "created_at": body["created_at"],
                 "status": "done",
+                "ship_type": body.get("ship_type"),
                 "identified": len(body["spaces"]) - unidentified,
                 "unidentified": unidentified,
+                "counts": {v: sum(f["verdict"] == v for f in measured) for v in ("FAIL", "NEEDS_REVIEW", "PASS")},
             }
         )
     return sorted(summaries, key=lambda s: s["created_at"], reverse=True)
@@ -271,7 +299,11 @@ def get_analysis(job: str) -> dict:
     path = job_folder(job) / "result.json"
     if not path.is_file():
         raise HTTPException(404)
-    return json.loads(path.read_text())
+    body = json.loads(path.read_text())
+    body.setdefault("project", DEFAULT_PROJECT)
+    if body.get("findings") is not None:
+        body["findings"] = _selected(body["findings"], body["project"])
+    return body
 
 
 @app.delete("/api/analyze/{job}", status_code=204)
@@ -370,6 +402,100 @@ def record_decision(entry: DecisionInput) -> dict:
     return add_decision(DECISIONS, entry).model_dump()
 
 
+def _chosen_rules(project_id: str) -> list[str] | None:
+    project = get_project(PROJECTS, project_id)
+    return project.rule_ids if project else None
+
+
+def _selected(findings: list[dict], project_id: str) -> list[dict]:
+    """Saved findings on the rules the project checks."""
+    chosen = _chosen_rules(project_id)
+    return findings if chosen is None else [f for f in findings if f["rule_id"] in chosen]
+
+
+@app.get("/api/sources")
+def list_sources() -> list[dict]:
+    return [s.model_dump() for s in read_sources(SOURCES)]
+
+
+@app.post("/api/sources", status_code=201)
+def create_source(
+    title: str = Form(...),
+    url: str = Form(""),
+    pages: str = Form(""),
+    note: str = Form(""),
+    rule_ids: str = Form(""),
+    file: UploadFile | None = File(None),
+) -> dict:
+    """A regulation file, a link or a note, with the pages that matter and the rules it backs."""
+    data = file.file.read(MAX_UPLOAD_BYTES + 1) if file and file.filename else None
+    if data is not None and len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "File is larger than 80 MB.")
+    known = {r.id for r in load_rules(RULES)}
+    ids = [i.strip() for i in rule_ids.split(",") if i.strip()]
+    if unknown := [i for i in ids if i not in known]:
+        raise HTTPException(422, f"Unknown rules: {unknown}")
+    try:
+        entry = SourceInput(title=title.strip(), url=url.strip(), pages=pages.strip(), note=note.strip(), rule_ids=ids)
+        return add_source(SOURCES, entry, file.filename if data is not None else None, data).model_dump()
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
+def _source(source_id: str):
+    found = next((s for s in read_sources(SOURCES) if s.id == source_id), None)
+    if found is None:
+        raise HTTPException(404)
+    return found
+
+
+@app.get("/api/sources/{source_id}/file")
+def get_source_file(source_id: str) -> FileResponse:
+    source = _source(source_id)
+    path = source_file(SOURCES, source)
+    if path is None:
+        raise HTTPException(404)
+    # Inline, so a PDF opens in the browser at the page the engineer asks for.
+    return FileResponse(path, filename=source.file_name, content_disposition_type="inline")
+
+
+@app.delete("/api/sources/{source_id}", status_code=204)
+def remove_source(source_id: str) -> None:
+    if not delete_source(SOURCES, source_id):
+        raise HTTPException(404)
+
+
+class RuleSelection(BaseModel):
+    rule_ids: list[str] = Field(max_length=500)
+
+
+@app.get("/api/projects")
+def list_projects() -> list[dict]:
+    """Oldest first. rule_ids is null while every rule is checked."""
+    return [p.model_dump() for p in read_projects(PROJECTS)]
+
+
+@app.post("/api/projects", status_code=201)
+def create_project(entry: ProjectInput) -> dict:
+    if entry.ship_type not in SHIP_TYPES:
+        raise HTTPException(422, f"Ship type must be one of: {list(SHIP_TYPES)}")
+    try:
+        return add_project(PROJECTS, entry).model_dump()
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from error
+
+
+@app.put("/api/projects/{project_id}/rules")
+def set_project_rules(project_id: str, selection: RuleSelection) -> dict:
+    project = get_project(PROJECTS, project_id)
+    if project is None:
+        raise HTTPException(404)
+    known = {r.id for r in load_rules(RULES, ship_type=project.ship_type)}
+    if unknown := [i for i in selection.rule_ids if i not in known]:
+        raise HTTPException(422, f"Unknown rules: {unknown}")
+    return set_rule_selection(PROJECTS, project_id, selection.rule_ids).model_dump()
+
+
 @app.get("/api/meta")
 def meta() -> dict:
     deck = get_deck()
@@ -410,7 +536,9 @@ def findings(
     explain: bool = False,
 ) -> dict:
     deck = scenario_deck(scenario)
-    results = run_checks(deck, load_rules(RULES, scope))
+    # The demo deck belongs to the default project.
+    chosen = _chosen_rules(DEFAULT_PROJECT)
+    results = run_checks(deck, [r for r in load_rules(RULES, scope) if chosen is None or r.id in chosen])
     note_error = None
     if explain:
         llm = get_llm()

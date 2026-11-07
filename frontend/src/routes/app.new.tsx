@@ -1,9 +1,12 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
-import { useAnalyse, useMeta } from "@/lib/api";
+import { useAnalyse, useMeta, useProjects } from "@/lib/api";
+import { DEFAULT_PROJECT } from "@/lib/floors";
 
 export const Route = createFileRoute("/app/new")({
   head: () => ({ meta: [{ title: "Upload a drawing · Keel" }] }),
+  validateSearch: (search: Record<string, unknown>): { project?: string } =>
+    typeof search["project"] === "string" ? { project: search["project"] } : {},
   component: NewAnalysis,
 });
 
@@ -13,7 +16,12 @@ function NewAnalysis() {
   const analyse = useAnalyse();
   const llm = meta.data?.llm ?? null;
   const [useAi, setUseAi] = useState(true);
-  const [shipType, setShipType] = useState("");
+  const projects = useProjects();
+  const [projectId, setProjectId] = useState(Route.useSearch().project ?? DEFAULT_PROJECT);
+  const project = projects.data?.find((p) => p.id === projectId);
+  // Starts as the project's ship type. An engineer can still change it for one drawing.
+  const [chosenShipType, setShipType] = useState<string | null>(null);
+  const shipType = chosenShipType ?? project?.ship_type ?? "";
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -26,6 +34,7 @@ function NewAnalysis() {
     if (scale) form.set("mm_per_unit", scale);
     form.set("use_ai", String(useAi && !!llm));
     form.set("ship_type", shipType);
+    form.set("project", projectId);
     analyse.mutate(form, {
       onSuccess: (result) => navigate({ to: "/app/analysis/$jobId", params: { jobId: result.id } }),
     });
@@ -35,7 +44,7 @@ function NewAnalysis() {
     <>
       <header className="page-head">
         <div>
-          <span className="crumb">Checked deck</span>
+          <span className="crumb">{project?.name ?? "Project"} · Files</span>
           <h1>Upload a drawing</h1>
           <p className="muted">
             Keel finds the spaces on the drawing, then opens it as a checked deck with the
@@ -44,6 +53,22 @@ function NewAnalysis() {
         </div>
       </header>
       <form className="card pad stack form" onSubmit={submit}>
+        <label>
+          Project
+          <select
+            value={projectId}
+            onChange={(e) => {
+              setProjectId(e.target.value);
+              setShipType(null);
+            }}
+          >
+            {projects.data?.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <label>
           Drawing (PDF or image, up to 80 MB)
           <input type="file" name="file" required accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,.bmp" />

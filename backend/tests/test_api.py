@@ -1,5 +1,6 @@
 """The routes the React frontend depends on. None of these need the source drawing."""
 import copy
+import json
 import threading
 import time
 
@@ -28,6 +29,8 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(api, "RESULTS", tmp_path / "analyses")
     monkeypatch.setattr(api, "JOBS", {})
     monkeypatch.setattr(api, "DECISIONS", tmp_path / "decisions.json")
+    monkeypatch.setattr(api, "SOURCES", tmp_path / "sources")
+    monkeypatch.setattr(api, "PROJECTS", tmp_path / "projects.json")
     monkeypatch.setattr(api, "FRONTEND", tmp_path / "dist")
     monkeypatch.setattr(api, "analyze", lambda *a, **k: FAKE_RESULT)
     monkeypatch.setattr(api, "analysis_json", lambda r: copy.deepcopy(RESULT))
@@ -229,3 +232,65 @@ def test_frontend_routes_files_and_traversal(client, tmp_path):
 def test_without_a_build_the_server_says_how_to_build(client):
     response = client.get("/")
     assert response.status_code == 404 and "npm" in response.json()["detail"]
+
+
+def test_sources_hold_a_file_with_its_pages_and_rules(client):
+    sent = client.post(
+        "/api/sources",
+        data={"title": "FSS Code ch.13", "pages": "12-14", "rule_ids": "ESC-CORRIDOR-WIDTH"},
+        files={"file": ("fss.pdf", b"%PDF-1.4", "application/pdf")},
+    )
+    assert sent.status_code == 201
+    source = sent.json()
+    assert source["file_name"] == "fss.pdf" and source["rule_ids"] == ["ESC-CORRIDOR-WIDTH"]
+    assert client.get("/api/sources").json() == [source]
+    assert client.get(f"/api/sources/{source['id']}/file").content == b"%PDF-1.4"
+    assert client.delete(f"/api/sources/{source['id']}").status_code == 204
+    assert client.get("/api/sources").json() == []
+
+
+def test_a_source_needs_content_and_known_rules(client):
+    assert client.post("/api/sources", data={"title": "Empty"}).status_code == 422
+    assert client.post("/api/sources", data={"title": "Bad link", "url": "ftp://x"}).status_code == 422
+    unknown = client.post("/api/sources", data={"title": "Link", "url": "https://imorules.com", "rule_ids": "NOPE"})
+    assert unknown.status_code == 422
+
+
+def _saved_floor(tmp_path, project=None):
+    folder = tmp_path / "analyses" / ("a" * 32)
+    folder.mkdir(parents=True)
+    findings = [{"rule_id": "ESC-CORRIDOR-WIDTH", "verdict": "FAIL"}, {"rule_id": "ESC-STAIR-WIDTH", "verdict": "PASS"}]
+    body = {**RESULT, "id": "a" * 32, "created_at": "2026-11-07T00:00:00Z", "findings": findings}
+    if project:
+        body["project"] = project
+    (folder / "result.json").write_text(json.dumps(body))
+
+
+def test_project_rule_selection_hides_findings_on_other_rules(client, tmp_path):
+    _saved_floor(tmp_path)
+    assert [p["rule_ids"] for p in client.get("/api/projects").json()] == [None]
+    assert len(client.get(f"/api/analyze/{'a' * 32}").json()["findings"]) == 2
+
+    assert client.put("/api/projects/default/rules", json={"rule_ids": ["ESC-STAIR-WIDTH"]}).status_code == 200
+    assert [f["rule_id"] for f in client.get(f"/api/analyze/{'a' * 32}").json()["findings"]] == ["ESC-STAIR-WIDTH"]
+    assert client.get("/api/analyses").json()[0]["counts"] == {"FAIL": 0, "NEEDS_REVIEW": 0, "PASS": 1}
+    assert client.put("/api/projects/default/rules", json={"rule_ids": ["NOPE"]}).status_code == 422
+    assert client.put("/api/projects/nope/rules", json={"rule_ids": []}).status_code == 404
+
+
+def test_new_projects_keep_their_own_floors_and_rules(client, tmp_path):
+    made = client.post("/api/projects", json={"name": "Cargo NB 1234", "ship_type": "cargo"})
+    assert made.status_code == 201 and made.json()["id"] == "cargo-nb-1234"
+    assert client.post("/api/projects", json={"name": "cargo nb 1234", "ship_type": "cargo"}).status_code == 409
+    assert client.post("/api/projects", json={"name": "Boat", "ship_type": "yacht"}).status_code == 422
+    assert [p["id"] for p in client.get("/api/projects").json()] == ["default", "cargo-nb-1234"]
+
+    _saved_floor(tmp_path, project="cargo-nb-1234")
+    client.put("/api/projects/default/rules", json={"rule_ids": []})
+    floor = client.get("/api/analyses").json()[0]
+    assert floor["project"] == "cargo-nb-1234" and floor["counts"]["FAIL"] == 1
+
+
+def test_an_upload_names_an_existing_project(client):
+    sent = client.post("/api/analyze", files={"file": ("deck.pdf", b"data")}, data={"project": "nope"})
+    assert sent.status_code == 404

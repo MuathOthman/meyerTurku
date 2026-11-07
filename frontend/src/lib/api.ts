@@ -148,6 +148,7 @@ export type Analysis = {
   mm_per_unit?: number | null;
   ship_type?: string;
   deck?: string | null;
+  project?: string;
   doors_found?: number;
   stairs_found?: number;
   findings?: Finding[];
@@ -157,9 +158,14 @@ export type Analysis = {
 };
 
 export type AnalysisSummary = Pick<Analysis, "id" | "source" | "page" | "created_at"> & {
+  deck: string | null;
+  project: string;
   status: "running" | "done";
+  ship_type: string | null;
   identified: number;
   unidentified: number;
+  /** Measured findings by verdict. Null while the drawing is still being read. */
+  counts: Record<Verdict, number> | null;
 };
 
 export type AnalysisStatus = {
@@ -170,6 +176,8 @@ export type AnalysisStatus = {
   completed?: string[];
   error?: string | null;
   source?: string;
+  deck?: string | null;
+  project?: string;
   created_at?: string;
 };
 
@@ -303,8 +311,12 @@ export const useImpact = (params: { count: number; berths: number } | null) =>
       request<Impact>(`/api/impact?count=${params!.count}&berths_each=${params!.berths}`),
   });
 
-export const useRules = () =>
-  useQuery({ queryKey: ["rules"], queryFn: () => request<Rule[]>("/api/rules") });
+/** The whole rule database, or only the rules for one ship type with that type's values. */
+export const useRules = (shipType?: string) =>
+  useQuery({
+    queryKey: ["rules", shipType ?? null],
+    queryFn: () => request<Rule[]>(shipType ? `/api/rules/${shipType}` : "/api/rules"),
+  });
 
 export const useAnalyses = () =>
   useQuery({
@@ -389,4 +401,87 @@ export function useRecordDecision() {
       }),
     onSuccess: () => client.invalidateQueries({ queryKey: ["decisions"] }),
   });
+}
+
+export type Source = {
+  id: string;
+  title: string;
+  url: string;
+  pages: string;
+  note: string;
+  rule_ids: string[];
+  file_name: string | null;
+  added_at: string;
+};
+
+export const useSources = () =>
+  useQuery({ queryKey: ["sources"], queryFn: () => request<Source[]>("/api/sources") });
+
+export function useAddSource() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (form: FormData) => request<Source>("/api/sources", { method: "POST", body: form }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["sources"] }),
+  });
+}
+
+export function useDeleteSource() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => request<void>(`/api/sources/${id}`, { method: "DELETE" }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["sources"] }),
+  });
+}
+
+export type Project = {
+  id: string;
+  name: string;
+  ship_type: string;
+  created_at: string;
+  /** The rule ids the project checks. Null until an engineer chooses, which means every rule. */
+  rule_ids: string[] | null;
+};
+
+export const useProjects = () =>
+  useQuery({ queryKey: ["projects"], queryFn: () => request<Project[]>("/api/projects") });
+
+export function useCreateProject() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (entry: { name: string; ship_type: string }) =>
+      request<Project>("/api/projects", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(entry),
+      }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["projects"] }),
+  });
+}
+
+export function useSaveProjectRules(projectId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (ruleIds: string[]) =>
+      request<Project>(`/api/projects/${projectId}/rules`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ rule_ids: ruleIds }),
+      }),
+    onSuccess: () => {
+      // The chosen rules decide which findings every floor of the project shows.
+      for (const key of ["projects", "findings", "analyses", "analysis"])
+        client.invalidateQueries({ queryKey: [key] });
+    },
+  });
+}
+
+/** The limit a rule sets, in a few words. */
+export function requirement(r: Rule): string {
+  if (r.value_mm !== null) {
+    const width = `${symbol(r.operator ?? "")} ${r.value_mm} mm`;
+    return r.minimum_area_m2 === null ? width : `${width} and ≥ ${r.minimum_area_m2} m²`;
+  }
+  if (r.value_mm_per_person !== null) return `${r.value_mm_per_person} mm per person`;
+  if (r.minimum_routes !== null) return `At least ${r.minimum_routes} routes`;
+  return "Geometry check";
 }

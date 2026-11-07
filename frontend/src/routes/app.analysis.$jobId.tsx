@@ -22,6 +22,7 @@ import {
   type AnalysisStatus,
   type Regulation,
 } from "@/lib/api";
+import { DEFAULT_PROJECT, fileOf, floorName, useProject } from "@/lib/floors";
 
 export const Route = createFileRoute("/app/analysis/$jobId")({
   head: () => ({ meta: [{ title: "Checked deck · Keel" }] }),
@@ -46,7 +47,7 @@ function AnalysisPage() {
   if (status.data.status === "failed")
     return (
       <div className="stack">
-        <h1>{status.data.source}</h1>
+        <h1>{floorName(status.data.deck ?? null, status.data.source ?? "")}</h1>
         <p className="notice notice-fail" role="alert">
           {status.data.error}
         </p>
@@ -70,14 +71,15 @@ function useElapsedSeconds(since: string | undefined) {
 }
 
 function AnalysisProgress({ state }: { state: AnalysisStatus }) {
+  const project = useProject(state.project ?? DEFAULT_PROJECT);
   const elapsed = useElapsedSeconds(state.created_at);
   const minutes = Math.floor(elapsed / 60);
   return (
     <>
       <header className="page-head">
         <div>
-          <span className="crumb">Checked deck</span>
-          <h1>{state.source}</h1>
+          <span className="crumb">{project?.name ?? "Project"} · Model</span>
+          <h1>{floorName(state.deck ?? null, state.source ?? "")}</h1>
           <p className="muted">
             Running for {minutes > 0 && `${minutes} min `}
             {elapsed % 60} s. You can leave this page, the check keeps going. The deck and its
@@ -111,6 +113,7 @@ function AnalysisResult({ jobId }: { jobId: string }) {
   const [showAll, setShowAll] = useState(false);
   const [showPassed, setShowPassed] = useState(false);
   const decisionLog = useDecisions();
+  const project = useProject(analysis.data?.project ?? DEFAULT_PROJECT);
 
   if (analysis.isPending) return <p role="status">Opening the deck…</p>;
   if (analysis.isError)
@@ -166,19 +169,31 @@ function AnalysisResult({ jobId }: { jobId: string }) {
     setTab("Spaces");
   };
   const onDelete = () => {
-    if (!window.confirm(`Delete ${r.source} from Keel? This cannot be undone.`)) return;
-    remove.mutate(r.id, { onSuccess: () => navigate({ to: "/app/new" }) });
+    if (
+      !window.confirm(
+        `Delete ${floorName(r.deck ?? null, r.source)} from Keel? This cannot be undone.`,
+      )
+    )
+      return;
+    remove.mutate(r.id, {
+      onSuccess: () =>
+        navigate({
+          to: "/app/projects/$projectId/files",
+          params: { projectId: r.project ?? DEFAULT_PROJECT },
+        }),
+    });
   };
 
   return (
     <>
       <header className="page-head">
         <div>
-          <span className="crumb">Checked deck</span>
-          <h1>{r.source}</h1>
+          <span className="crumb">{project?.name ?? "Project"} · Model</span>
+          <h1>{floorName(r.deck ?? null, r.source)}</h1>
           <p className="muted">
-            {ordered.length} spaces · {r.doors_found ?? 0} doors · {r.stairs_found ?? 0} stairs ·{" "}
-            {findings.length} measured checks · {toConfirm} names to confirm
+            {fileOf(r.deck ?? null, r.source)}, page {r.page + 1} · {ordered.length} spaces ·{" "}
+            {r.doors_found ?? 0} doors · {r.stairs_found ?? 0} stairs · {findings.length} measured
+            checks · {toConfirm} names to confirm
           </p>
         </div>
         <div className="page-actions">
@@ -203,7 +218,7 @@ function AnalysisResult({ jobId }: { jobId: string }) {
       )}
       <PlanView
         plan={plan}
-        alt={`Plan of ${r.source}`}
+        alt={`Plan of ${floorName(r.deck ?? null, r.source)}`}
         pins={findings
           .filter((f) => showPassed || f.verdict !== "PASS" || f === currentFinding)
           .map((f) => ({
