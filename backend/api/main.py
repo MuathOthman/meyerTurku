@@ -17,11 +17,13 @@ from pathlib import Path
 import cv2
 import pymupdf
 import yaml
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from pydantic import BaseModel, Field
+from pymongo.errors import PyMongoError
 
+from api.auth import router as auth_router
 from keel.analyze import analysis_json, analyze, rename_space, space_types
 from keel.checks import run_checks
 from keel.decisions import DecisionInput, add_decision, read_decisions
@@ -62,6 +64,13 @@ PROJECTS = BACKEND / "data/processed/projects.json"
 log = logging.getLogger(__name__)
 
 app = FastAPI(title="Keel", description="AI reads, code measures, engineer decides.")
+app.include_router(auth_router)
+
+
+@app.exception_handler(PyMongoError)
+def accounts_database_down(_request: Request, error: PyMongoError) -> JSONResponse:
+    log.error("Accounts database error: %s", error)
+    return JSONResponse({"detail": "The accounts database cannot be reached."}, status_code=503)
 
 
 @lru_cache(maxsize=1)

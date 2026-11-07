@@ -17,8 +17,16 @@ export const Route = createFileRoute("/")({
 function Landing() {
   return (
     <div className="landing">
-      <header>
+      <header className="landing-head">
         <KeelLogo />
+        <div className="row">
+          <Link to="/login" className="btn">
+            Log in
+          </Link>
+          <Link to="/signup" className="btn primary">
+            Sign up
+          </Link>
+        </div>
       </header>
       <main>
         <h1>Ship design compliance, checked before class does.</h1>

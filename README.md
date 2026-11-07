@@ -21,6 +21,17 @@ cd ..
 cp .env.example .env     # optional: add an LLM key. Measurements and verdicts never use it
 ```
 
+User accounts are stored in MongoDB, so logging in needs one running. On a Mac:
+
+```bash
+brew tap mongodb/brew
+brew trust --formula mongodb/brew/mongodb-community
+brew install mongodb-community --without-mongodb-database-tools
+brew services start mongodb-community
+```
+
+Or set `MONGODB_URI` in `.env` to use a database elsewhere.
+
 Then, from the project folder:
 
 ```bash

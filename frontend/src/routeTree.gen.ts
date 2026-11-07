@@ -11,11 +11,14 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/app'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as SignupRouteImport } from './routes/signup'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppLogRouteImport } from './routes/app.log'
 import { Route as AppNewRouteImport } from './routes/app.new'
 import { Route as AppReportsRouteImport } from './routes/app.reports'
 import { Route as AppRulesRouteImport } from './routes/app.rules'
+import { Route as AppSettingsRouteImport } from './routes/app.settings'
 import { Route as AppWallRouteImport } from './routes/app.wall'
 import { Route as AppAgentsAgentIdRouteImport } from './routes/app.agents.$agentId'
 import { Route as AppAnalysisJobIdRouteImport } from './routes/app.analysis.$jobId'
@@ -31,6 +34,16 @@ const IndexRoute = IndexRouteImport.update({
 const AppRoute = AppRouteImport.update({
   id: '/app',
   path: '/app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignupRoute = SignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppIndexRoute = AppIndexRouteImport.update({
@@ -56,6 +69,11 @@ const AppReportsRoute = AppReportsRouteImport.update({
 const AppRulesRoute = AppRulesRouteImport.update({
   id: '/rules',
   path: '/rules',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => AppRoute,
 } as any)
 const AppWallRoute = AppWallRouteImport.update({
@@ -94,10 +112,13 @@ const AppProjectsProjectIdRulesRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/login': typeof LoginRoute
+  '/signup': typeof SignupRoute
   '/app/log': typeof AppLogRoute
   '/app/new': typeof AppNewRoute
   '/app/reports': typeof AppReportsRoute
   '/app/rules': typeof AppRulesRoute
+  '/app/settings': typeof AppSettingsRoute
   '/app/wall': typeof AppWallRoute
   '/app/': typeof AppIndexRoute
   '/app/agents/$agentId': typeof AppAgentsAgentIdRoute
@@ -108,10 +129,13 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
+  '/signup': typeof SignupRoute
   '/app/log': typeof AppLogRoute
   '/app/new': typeof AppNewRoute
   '/app/reports': typeof AppReportsRoute
   '/app/rules': typeof AppRulesRoute
+  '/app/settings': typeof AppSettingsRoute
   '/app/wall': typeof AppWallRoute
   '/app': typeof AppIndexRoute
   '/app/agents/$agentId': typeof AppAgentsAgentIdRoute
@@ -124,10 +148,13 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/login': typeof LoginRoute
+  '/signup': typeof SignupRoute
   '/app/log': typeof AppLogRoute
   '/app/new': typeof AppNewRoute
   '/app/reports': typeof AppReportsRoute
   '/app/rules': typeof AppRulesRoute
+  '/app/settings': typeof AppSettingsRoute
   '/app/wall': typeof AppWallRoute
   '/app/': typeof AppIndexRoute
   '/app/agents/$agentId': typeof AppAgentsAgentIdRoute
@@ -141,10 +168,13 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/app'
+    | '/login'
+    | '/signup'
     | '/app/log'
     | '/app/new'
     | '/app/reports'
     | '/app/rules'
+    | '/app/settings'
     | '/app/wall'
     | '/app/'
     | '/app/agents/$agentId'
@@ -155,10 +185,13 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/login'
+    | '/signup'
     | '/app/log'
     | '/app/new'
     | '/app/reports'
     | '/app/rules'
+    | '/app/settings'
     | '/app/wall'
     | '/app'
     | '/app/agents/$agentId'
@@ -170,10 +203,13 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/app'
+    | '/login'
+    | '/signup'
     | '/app/log'
     | '/app/new'
     | '/app/reports'
     | '/app/rules'
+    | '/app/settings'
     | '/app/wall'
     | '/app/'
     | '/app/agents/$agentId'
@@ -186,6 +222,8 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
+  LoginRoute: typeof LoginRoute
+  SignupRoute: typeof SignupRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -202,6 +240,20 @@ declare module '@tanstack/react-router' {
       path: '/app'
       fullPath: '/app'
       preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/signup': {
+      id: '/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof SignupRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app/': {
@@ -237,6 +289,13 @@ declare module '@tanstack/react-router' {
       path: '/rules'
       fullPath: '/app/rules'
       preLoaderRoute: typeof AppRulesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/settings': {
+      id: '/app/settings'
+      path: '/settings'
+      fullPath: '/app/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/wall': {
@@ -289,6 +348,7 @@ interface AppRouteChildren {
   AppNewRoute: typeof AppNewRoute
   AppReportsRoute: typeof AppReportsRoute
   AppRulesRoute: typeof AppRulesRoute
+  AppSettingsRoute: typeof AppSettingsRoute
   AppWallRoute: typeof AppWallRoute
   AppIndexRoute: typeof AppIndexRoute
   AppAgentsAgentIdRoute: typeof AppAgentsAgentIdRoute
@@ -303,6 +363,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppNewRoute: AppNewRoute,
   AppReportsRoute: AppReportsRoute,
   AppRulesRoute: AppRulesRoute,
+  AppSettingsRoute: AppSettingsRoute,
   AppWallRoute: AppWallRoute,
   AppIndexRoute: AppIndexRoute,
   AppAgentsAgentIdRoute: AppAgentsAgentIdRoute,
@@ -317,6 +378,8 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
+  LoginRoute: LoginRoute,
+  SignupRoute: SignupRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
