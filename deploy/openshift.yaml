@@ -1,0 +1,92 @@
+# Keel on OpenShift: one pod serving the API and the built web app on port 8000.
+# Apply with: oc apply -f deploy/openshift.yaml (after the image is built, see deploy/README.md).
+#
+# One replica only: analyses run in an in-process queue, and projects, floors, sources and
+# decisions are files on the volume below.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: keel-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keel
+  annotations:
+    # Redeploy when a new build lands in the keel image stream.
+    image.openshift.io/triggers: >-
+      [{"from":{"kind":"ImageStreamTag","name":"keel:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"keel\")].image"}]
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # The volume is ReadWriteOnce, so the old pod must stop first.
+  selector:
+    matchLabels: { app: keel }
+  template:
+    metadata:
+      labels: { app: keel }
+    spec:
+      containers:
+        - name: keel
+          image: keel:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: KEEL_LLM_PROVIDER
+              value: openai # openai, gemini, ollama or none
+          envFrom:
+            # Optional: api_chatgpt / api_gemini. Without it Keel runs with no AI.
+            - secretRef:
+                name: keel-ai
+                optional: true
+          volumeMounts:
+            - name: data
+              mountPath: /app/data/processed
+          resources:
+            requests: { cpu: 500m, memory: 1Gi }
+            limits: { memory: 3Gi }
+          # The first start downloads the sample drawing and builds the demo deck.
+          startupProbe:
+            httpGet: { path: /api/projects, port: 8000 }
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: { path: /api/projects, port: 8000 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/projects, port: 8000 }
+            periodSeconds: 30
+            timeoutSeconds: 5
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: keel-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keel
+spec:
+  selector: { app: keel }
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: keel
+  annotations:
+    # Large drawings take a while to upload.
+    haproxy.router.openshift.io/timeout: 5m
+spec:
+  to: { kind: Service, name: keel }
+  port: { targetPort: 8000 }
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

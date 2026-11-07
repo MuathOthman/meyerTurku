@@ -24,5 +24,11 @@ COPY --from=frontend /frontend/dist ./frontend/dist
 ENV KEEL_FRONTEND_DIST=/app/frontend/dist
 RUN pip install --no-cache-dir .
 
+# OpenShift runs the container as a random user in group 0. Let that group write the data folders
+# (the drawing download, and data/processed, which a volume normally replaces).
+RUN mkdir -p data/raw data/processed && chgrp -R 0 /app && chmod -R g=u /app
+ENV HOME=/tmp
+USER 1001
+
 EXPOSE 8000
 CMD ["sh", "-c", "[ -f data/raw/rcrv_ga.pdf ] || scripts/get_data.sh; exec uvicorn api.main:app --host 0.0.0.0 --port 8000"]
