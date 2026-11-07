@@ -1,4 +1,5 @@
 # ADA 2010 Standards values, checked in the published standard (print version).
+# ADA protects passengers, so these rules apply to passenger ships only.
 # ADA applies only along accessible routes. This drawing does not mark them, so Keel never
 # fails a space on these rules unless an engineer marks it accessible in the deck config.
 
@@ -14,6 +15,7 @@
   value_mm: 815
   value_status: verified
   check: accessible_door
+  ship_types: [passenger]
   interpretation_note: >-
     Measured between the door face and the stop with the door open 90 degrees. The drawing
     does not show that directly, so it is estimated from leaf width minus a frame allowance.
@@ -33,6 +35,7 @@
   value_mm: 915
   value_status: verified
   check: accessible_route
+  ship_types: [passenger]
   interpretation_note: >-
     A reduction to 815 mm is allowed for up to 610 mm of length, under conditions. Keel
     does not apply that exception automatically, so such a case goes to review.
@@ -52,6 +55,7 @@
   value_mm: 1525
   value_status: verified
   check: accessible_turning
+  ship_types: [passenger]
   interpretation_note: >-
     A 60 in circle. A T-shaped space (304.3.2) is an alternative that Keel does not test,
     and knee and toe clearance may count, so a shortfall here goes to review.

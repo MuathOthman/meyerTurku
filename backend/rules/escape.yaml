@@ -142,6 +142,14 @@
     One fire can block one route. A second, separate route means people still have a way out.
   fix: >-
     Add a second route to a different exit, widely separated from the first. A ladder or escape trunk may be accepted where a stair will not fit, so check with the Administration.
+  ship_values:
+    cargo:
+      source: "SOLAS II-2/13.3.3.1"
+      interpretation_note: >-
+        Cargo ships: at least two widely separated means of escape from each restricted space or
+        group of spaces, at all levels of accommodation. Here a corridor stands for the group of
+        spaces it serves. 13.3.3.6 lets the Administration exceptionally dispense with one means
+        for crew spaces entered only occasionally, which Keel does not decide.
 - id: ESC-DEAD-END
   title: Maximum length of a dead-end corridor
   source: "SOLAS II-2/13.3.3.4, recess exception in 13.3.1"
