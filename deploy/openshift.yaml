@@ -56,13 +56,18 @@ spec:
             httpGet: { path: /api/projects, port: 8000 }
             periodSeconds: 10
             failureThreshold: 30
+          # Reading a drawing keeps the server busy for minutes and slows its answers. Be patient,
+          # or OpenShift stops sending it traffic and, worse, restarts it mid-analysis.
           readinessProbe:
             httpGet: { path: /api/projects, port: 8000 }
             periodSeconds: 10
+            timeoutSeconds: 15
+            failureThreshold: 6
           livenessProbe:
             httpGet: { path: /api/projects, port: 8000 }
-            periodSeconds: 30
-            timeoutSeconds: 5
+            periodSeconds: 60
+            timeoutSeconds: 30
+            failureThreshold: 10
       volumes:
         - name: data
           persistentVolumeClaim:
