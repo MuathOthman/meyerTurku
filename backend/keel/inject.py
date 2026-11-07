@@ -68,6 +68,14 @@ def remove_exits(deck: Deck, door_ids: list[str]) -> Deck:
     return result
 
 
+def mark_accessible(deck: Deck, space_ids: list[str]) -> Deck:
+    """Mark spaces as on an accessible route, which turns on the ADA and PVAG checks for them."""
+    result = _copy(deck, f"mark_accessible:{','.join(space_ids)}")
+    for space_id in space_ids:
+        result.space(space_id).accessible = True
+    return result
+
+
 def shrink_door(deck: Deck, door_id: str, clear_to_mm: float) -> Deck:
     """Change the door so its estimated clear width becomes clear_to_mm."""
     result = _copy(deck, f"shrink_door:{door_id}:clear={clear_to_mm:.0f}mm")
@@ -113,6 +121,7 @@ DEFECTS = {
     "flip_door_swing": lambda deck, a: flip_door_swing(deck, a["id"]),
     "remove_exits": lambda deck, a: remove_exits(deck, a["ids"]),
     "shrink_door": lambda deck, a: shrink_door(deck, a["id"], a["to_mm"]),
+    "mark_accessible": lambda deck, a: mark_accessible(deck, a["ids"]),
     "lengthen_dead_end": lambda deck, a: lengthen_dead_end(deck, a["id"], a["spur_mm"]),
     "add_cabins": lambda deck, a: add_cabins(deck, a["count"], a.get("berths_each", 2), a.get("near")),
 }

@@ -10,6 +10,7 @@
 - {name: "Stair door shrunk to 620 mm clear", defect: shrink_door, args: {id: D-26, to_mm: 620}, rule: ESC-DOOR-WIDTH, subject: D-26, expect: FAIL}
 - {name: "Exit door shrunk to 560 mm clear", defect: shrink_door, args: {id: D-06, to_mm: 560}, rule: ESC-DOOR-WIDTH, subject: D-06, expect: FAIL}
 - {name: "Dead-end spur of 10 m added", defect: lengthen_dead_end, args: {id: 01-15-2, spur_mm: 10000}, rule: ESC-DEAD-END, subject: 01-15-2, expect: FAIL}
+- {name: "Hospital and Chief Science cabin made accessible (ADA and PVAG)", defect: mark_accessible, args: {ids: [01-39-1, 01-15-4]}, rule: PVAG-DOOR-CLEAR, subject: D-09, expect: FAIL}
 - {name: "40 double cabins added", defect: add_cabins, args: {count: 40, near: 01-15-2}, rule: ESC-STAIR-CAPACITY, subject: 1-25-0, expect: FAIL}
 
 # Controls: changes that are compliant or too close to call. A FAIL here is a false alarm.
