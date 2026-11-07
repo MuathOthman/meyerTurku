@@ -1,0 +1,38 @@
+# Builds the Keel image from GitHub and rebuilds on every push to main (GitHub webhook).
+# Needs two secrets, created by hand and never committed:
+#   github-repo     GitHub username and token that can read the repository
+#   github-webhook  WebHookSecretKey, the secret part of the webhook URL
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: keel
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: keel
+spec:
+  source:
+    type: Git
+    git:
+      uri: https://github.com/MuathOthman/meyerTurku.git
+      ref: main
+    sourceSecret:
+      name: github-repo
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: backend/Dockerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: keel:latest
+  triggers:
+    - type: ConfigChange
+    - type: GitHub
+      github:
+        secretReference:
+          name: github-webhook
+  resources:
+    limits:
+      memory: 4Gi
