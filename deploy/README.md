@@ -40,9 +40,16 @@ Later changes: push, then `oc start-build keel --follow`. The deployment restart
 - **One replica.** Analyses run in an in-process queue and all data is files on the `keel-data`
   volume (projects, floors, sources, decisions), mounted at `/app/data/processed`.
 - **First start** downloads the RCRV sample drawing and builds the demo deck, so it takes a minute.
-- **Accounts need MongoDB.** Nobody can log in until the app can reach a database. Add its address
-  to the secret, then restart: `oc patch secret keel-ai -p '{"stringData":{"MONGODB_URI":"<address>"}}'`
-  and `oc rollout restart deploy/keel`. This manifest does not run a database.
+- **Accounts need MongoDB.** `deploy/mongodb.yaml` runs one inside the project, reachable only by
+  the app. Create its secret once, with a random password, then apply it before the app:
+  ```bash
+  pw=$(openssl rand -hex 24)
+  oc create secret generic keel-mongo --from-literal=MONGO_INITDB_ROOT_USERNAME=keel \
+    --from-literal=MONGO_INITDB_ROOT_PASSWORD=$pw \
+    --from-literal=MONGODB_URI="mongodb://keel:$pw@mongodb:27017/?authSource=admin"
+  oc apply -f deploy/mongodb.yaml
+  ```
+  To use a database elsewhere instead, put its address in `MONGODB_URI` in that secret.
 - **The login only guards the pages.** The `/api` routes do not check it, so anyone who can open the
   route can still call them to upload, change and delete. Keep the route internal, or put it behind
   your cluster's OAuth proxy, before sharing it.

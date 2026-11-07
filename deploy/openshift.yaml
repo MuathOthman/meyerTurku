@@ -44,6 +44,10 @@ spec:
             - secretRef:
                 name: keel-ai
                 optional: true
+            # MONGODB_URI for user accounts, see deploy/mongodb.yaml.
+            - secretRef:
+                name: keel-mongo
+                optional: true
           volumeMounts:
             - name: data
               mountPath: /app/data/processed

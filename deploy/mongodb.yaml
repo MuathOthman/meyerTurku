@@ -1,0 +1,64 @@
+# MongoDB for Keel's user accounts, reachable only inside the project at mongodb:27017.
+# Needs the secret keel-mongo, created by hand and never committed (see deploy/README.md):
+#   MONGO_INITDB_ROOT_USERNAME, MONGO_INITDB_ROOT_PASSWORD  read by MongoDB on first start
+#   MONGODB_URI                                              read by Keel
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongodb-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # One database process per volume.
+  selector:
+    matchLabels: { app: mongodb }
+  template:
+    metadata:
+      labels: { app: mongodb }
+    spec:
+      containers:
+        - name: mongodb
+          image: docker.io/library/mongo:7.0
+          ports:
+            - containerPort: 27017
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom: { secretKeyRef: { name: keel-mongo, key: MONGO_INITDB_ROOT_USERNAME } }
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom: { secretKeyRef: { name: keel-mongo, key: MONGO_INITDB_ROOT_PASSWORD } }
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 1Gi }
+          readinessProbe:
+            tcpSocket: { port: 27017 }
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: { port: 27017 }
+            periodSeconds: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mongodb-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+spec:
+  selector: { app: mongodb }
+  ports:
+    - port: 27017
+      targetPort: 27017
