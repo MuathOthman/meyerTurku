@@ -18,6 +18,9 @@ describe("routes", () => {
     "/app/reports",
     "/app/wall",
     "/app/agents/check",
+    "/app/settings",
+    "/login",
+    "/signup",
   ])("%s has a page", (path) => {
     expect(router.matchRoutes(path).at(-1)?.routeId).not.toBe(rootRouteId);
   });

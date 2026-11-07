@@ -1,7 +1,15 @@
-import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { Sidebar } from "@/components/Sidebar";
+import { currentUser } from "@/lib/auth";
 
-export const Route = createFileRoute("/app")({ component: AppShell });
+export const Route = createFileRoute("/app")({
+  beforeLoad: async () => {
+    const user = await currentUser();
+    if (!user) throw redirect({ to: "/login" });
+    return { user };
+  },
+  component: AppShell,
+});
 
 function AppShell() {
   return (

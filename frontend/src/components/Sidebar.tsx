@@ -12,6 +12,7 @@ import {
   Monitor,
   PanelLeft,
   Plus,
+  Settings,
   Ship,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
@@ -204,6 +205,12 @@ export function Sidebar() {
             label="Wall view"
             collapsed={collapsed}
           />
+          <NavItem
+            to="/app/settings"
+            icon={<Settings size={20} />}
+            label="Settings"
+            collapsed={collapsed}
+          />
         </nav>
       )}
 
@@ -246,7 +253,7 @@ function Section(props: {
 }
 
 function NavItem(props: {
-  to: "/app/rules" | "/app/log" | "/app/reports" | "/app/wall";
+  to: "/app/rules" | "/app/log" | "/app/reports" | "/app/wall" | "/app/settings";
   icon: ReactNode;
   label: string;
   collapsed: boolean;

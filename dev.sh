@@ -9,6 +9,11 @@ if [ ! -x backend/.venv/bin/uvicorn ]; then
 fi
 [ -d frontend/node_modules ] || npm --prefix frontend install
 
+# Accounts are in MongoDB. Without it the app still starts, but nobody can sign up or log in.
+if ! grep -q '^MONGODB_URI=' .env 2>/dev/null && ! nc -z localhost 27017 2>/dev/null; then
+  echo "Warning: MongoDB is not running, so login will not work. Start it with: brew services start mongodb-community" >&2
+fi
+
 (cd backend && exec .venv/bin/uvicorn api.main:app --reload --reload-dir api --reload-dir keel --timeout-graceful-shutdown 3 --port 8000) &
 backend=$!
 trap 'kill "$backend" 2>/dev/null || true' EXIT

@@ -18,10 +18,12 @@ dependencies = [
   "opencv-python-headless>=4.9",
   "certifi>=2024.2.2",
   "rapidocr-onnxruntime>=1.3",
+  "pymongo>=4.6",
+  "argon2-cffi>=23.1",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "httpx>=0.27"]
+dev = ["pytest>=8.0", "httpx>=0.27", "mongomock>=4.1"]
 
 [project.scripts]
 keel = "keel.cli:app"
