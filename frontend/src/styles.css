@@ -1681,3 +1681,58 @@ th {
   padding: 8px 12px;
   font-size: 14.5px;
 }
+
+/* Checks tab: one list, grouped by what the engineer has to do */
+.check-banner {
+  margin: 12px 12px 0;
+}
+.check-group + .check-group {
+  border-top: 1px solid var(--line);
+}
+.check-group-head {
+  width: 100%;
+  border: 0;
+  background: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px 8px;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.check-group-head:disabled {
+  cursor: default;
+}
+.check-group-head h2 {
+  flex: 1;
+}
+.check-count {
+  min-width: 26px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 11px;
+  background: var(--bg);
+  font-size: 12.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.check-group[data-tone="fail"] .check-count {
+  background: var(--fail-bg);
+  color: var(--fail);
+}
+.check-group[data-tone="review"] .check-count {
+  background: var(--review-bg);
+  color: var(--review);
+}
+.check-group[data-tone="pass"] .check-count {
+  background: var(--pass-bg);
+  color: var(--pass);
+}
+.check-hint {
+  padding: 0 18px 8px;
+  font-size: 12.5px;
+}

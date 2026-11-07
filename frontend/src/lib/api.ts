@@ -215,7 +215,26 @@ export function regulationsOf(spaces: AnalysedSpace[]): Regulation[] {
   return [...byRef.values()].sort((a, b) => a.ref.localeCompare(b.ref));
 }
 
-export type DecisionKind = "accepted" | "need_info" | "rejected" | "cleared" | "renamed";
+/**
+ * What Keel could not measure: each regulation once, with only the spaces it still has to be
+ * checked on by hand. A regulation measured on every space it applies to is left out.
+ */
+export function manualChecksOf(spaces: AnalysedSpace[]): Regulation[] {
+  const unmeasured = spaces.map((space) => ({
+    ...space,
+    checklist: space.checklist.filter((item) => !item.verdict),
+  }));
+  return regulationsOf(unmeasured).map((r) => ({
+    ...r,
+    spaces: r.spaces.map((s) => spaces.find((o) => o.number === s.number) ?? s),
+  }));
+}
+
+/** The change-log key for a regulation checked by hand on one floor. */
+export const manualCheckKey = (floorId: string, ref: string) => `${floorId}:manual:${ref}`;
+
+export type DecisionKind =
+  "accepted" | "need_info" | "rejected" | "cleared" | "renamed" | "complies" | "does_not_comply";
 
 export type Decision = {
   finding: string;
@@ -232,6 +251,8 @@ export const DECISION_LABEL: Record<DecisionKind, string> = {
   rejected: "Finding rejected",
   cleared: "Decision undone",
   renamed: "Space renamed",
+  complies: "Checked by hand: complies",
+  does_not_comply: "Checked by hand: does not comply",
 };
 
 export const symbol = (operator: string) =>

@@ -2,15 +2,20 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { FindingDetail, FindingShape, VerdictTag } from "@/components/FindingDetail";
 import { PlanView, type PlanGeometry } from "@/components/PlanView";
 import { Check, LoaderCircle } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import {
   currentDecisions,
+  DECISION_LABEL,
+  manualCheckKey,
+  manualChecksOf,
   needsNameFirst,
   symbol,
   useDecisions,
+  useRecordDecision,
+  type Decision,
+  type DecisionKind,
   type Finding,
   NO_REGULATIONS_YET,
-  regulationsOf,
   UNIDENTIFIED,
   useAnalysis,
   useAnalysisStatus,
@@ -29,8 +34,7 @@ export const Route = createFileRoute("/app/analysis/$jobId")({
   component: AnalysisPage,
 });
 
-const TABS = ["Findings", "Spaces", "Regulations"] as const;
-const FILTERS = ["To check", "FAIL", "NEEDS_REVIEW", "PASS", "All"] as const;
+const TABS = ["Checks", "Rooms"] as const;
 
 function AnalysisPage() {
   const { jobId } = Route.useParams();
@@ -109,7 +113,8 @@ function AnalysisResult({ jobId }: { jobId: string }) {
   const [chosenTab, setTab] = useState<(typeof TABS)[number] | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [pin, setPin] = useState<string | null>(null);
-  const [filter, setFilter] = useState<(typeof FILTERS)[number]>("To check");
+  const [manualRef, setManualRef] = useState<string | null>(null);
+  const [showPassedList, setShowPassedList] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [showPassed, setShowPassed] = useState(false);
   const decisionLog = useDecisions();
@@ -127,20 +132,21 @@ function AnalysisResult({ jobId }: { jobId: string }) {
   const named = r.spaces.filter((s) => s.name !== UNIDENTIFIED);
   const unnamed = r.spaces.filter((s) => s.name === UNIDENTIFIED);
   const ordered = [...named, ...unnamed];
-  const regulations = regulationsOf(r.spaces);
+  const manual = manualChecksOf(r.spaces);
   const toConfirm = ordered.filter(nameNeedsChecking).length;
   const current = ordered.find((s) => s.number === selected) ?? ordered[0];
   const findings = (r.findings ?? []).filter((f) => !f.could_not_check);
   const notApplied = (r.findings ?? []).filter((f) => f.could_not_check);
-  const tab = chosenTab ?? (findings.length ? "Findings" : "Spaces");
-  const currentFinding =
-    findings.find((f) => f.pin === pin) ??
-    findings.find((f) => f.verdict === "FAIL") ??
-    findings.find((f) => f.verdict === "NEEDS_REVIEW") ??
-    findings[0];
-  const matches = (f: Finding, v: (typeof FILTERS)[number]) =>
-    v === "All" || (v === "To check" ? f.verdict !== "PASS" : f.verdict === v);
-  const shown = findings.filter((f) => matches(f, filter));
+  const tab = chosenTab ?? (findings.length || manual.length ? "Checks" : "Rooms");
+  const fails = findings.filter((f) => f.verdict === "FAIL");
+  const reviews = findings.filter((f) => f.verdict === "NEEDS_REVIEW");
+  const passes = findings.filter((f) => f.verdict === "PASS");
+  // Open on what needs the engineer most: a fail, then a review, then a check by hand.
+  const currentManual = manual.find((m) => m.ref === manualRef);
+  const currentFinding = currentManual
+    ? undefined
+    : (findings.find((f) => f.pin === pin) ?? fails[0] ?? reviews[0]);
+  const shownManual = currentManual ?? (currentFinding ? undefined : manual[0]);
   const decisions = currentDecisions(decisionLog.data ?? []);
   const decisionKey = (f: Finding) => `${r.id}:${f.rule_id}:${f.subject_id}`;
   const scale = r.plan_scale ?? 1;
@@ -163,10 +169,17 @@ function AnalysisResult({ jobId }: { jobId: string }) {
     };
     return [middle(0) / scale + originX, middle(1) / scale + originY];
   };
-  const onFindingsTab = tab === "Findings" && !!currentFinding;
+  const onFindingsTab = tab === "Checks" && !!currentFinding;
+  const manualRooms = new Set(
+    tab === "Checks" && shownManual ? shownManual.spaces.map((s) => s.number) : [],
+  );
   const openSpace = (space: AnalysedSpace) => {
     setSelected(space.number);
-    setTab("Spaces");
+    setTab("Rooms");
+  };
+  const openFinding = (f: Finding) => {
+    setManualRef(null);
+    setPin(f.pin ?? null);
   };
   const onDelete = () => {
     if (
@@ -229,12 +242,16 @@ function AnalysisResult({ jobId }: { jobId: string }) {
             y: f.location_pt[1],
           }))}
         selectedPin={onFindingsTab ? (currentFinding?.pin ?? null) : null}
-        focus={onFindingsTab ? (currentFinding?.location_pt ?? null) : spaceFocus(current)}
+        focus={
+          onFindingsTab
+            ? (currentFinding?.location_pt ?? null)
+            : spaceFocus(manualRooms.size ? shownManual?.spaces[0] : current)
+        }
         onSelectPin={(id) => {
-          setPin(id);
           const chosen = findings.find((f) => f.pin === id);
-          if (chosen && !matches(chosen, filter)) setFilter("All");
-          setTab("Findings");
+          if (chosen) openFinding(chosen);
+          if (chosen?.verdict === "PASS") setShowPassedList(true);
+          setTab("Checks");
         }}
         tools={
           <>
@@ -253,7 +270,13 @@ function AnalysisResult({ jobId }: { jobId: string }) {
               </button>
             )}
             <span className="plan-scale">
-              {onFindingsTab ? currentFinding?.subject_name : current ? spaceName(current) : ""}
+              {onFindingsTab
+                ? currentFinding?.subject_name
+                : manualRooms.size
+                  ? shownManual?.ref
+                  : current
+                    ? spaceName(current)
+                    : ""}
             </span>
           </>
         }
@@ -263,7 +286,9 @@ function AnalysisResult({ jobId }: { jobId: string }) {
             <g
               key={s.number}
               className="overlay-room"
-              data-active={!onFindingsTab && s.number === current?.number}
+              data-active={
+                tab === "Checks" ? manualRooms.has(s.number) : s.number === current?.number
+              }
               data-show={showAll}
               role="button"
               tabIndex={0}
@@ -287,63 +312,98 @@ function AnalysisResult({ jobId }: { jobId: string }) {
       <div role="tablist" className="tabs">
         {TABS.map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
-            {t === "Regulations"
-              ? `Regulations (${regulations.length})`
-              : t === "Findings"
-                ? `Findings (${findings.length})`
-                : `Spaces (${ordered.length})`}
+            {t === "Checks"
+              ? `Checks · ${fails.length} fail · ${reviews.length} review · ${manual.length} by hand`
+              : `Rooms (${ordered.length})`}
           </button>
         ))}
       </div>
-      {tab === "Findings" ? (
+      {tab === "Checks" ? (
         <div className="findings-stack">
-          <section className="card findings-list" aria-label="Findings">
-            <div className="card-head">
-              <h2>Findings</h2>
-            </div>
-            <div className="filters">
-              {FILTERS.map((v) => {
-                const count = findings.filter((f) => matches(f, v)).length;
+          <section className="card findings-list" aria-label="Checks">
+            {toConfirm > 0 && (
+              <p className="notice check-banner">
+                {toConfirm} room names still to confirm. A wrongly named room gets the wrong checks.{" "}
+                <button className="link" onClick={() => setTab("Rooms")}>
+                  Check the rooms
+                </button>
+              </p>
+            )}
+            <CheckGroup title="Fails" tone="fail" count={fails.length}>
+              {fails.map((f) => (
+                <FindingRow
+                  key={f.pin}
+                  finding={f}
+                  active={f.pin === currentFinding?.pin}
+                  decision={decisions.get(decisionKey(f))}
+                  onOpen={() => openFinding(f)}
+                />
+              ))}
+            </CheckGroup>
+            <CheckGroup title="Needs review" tone="review" count={reviews.length}>
+              {reviews.map((f) => (
+                <FindingRow
+                  key={f.pin}
+                  finding={f}
+                  active={f.pin === currentFinding?.pin}
+                  decision={decisions.get(decisionKey(f))}
+                  onOpen={() => openFinding(f)}
+                />
+              ))}
+            </CheckGroup>
+            <CheckGroup
+              title="Check by hand"
+              tone="manual"
+              count={manual.length}
+              hint="Applies here, but a drawing cannot show it. Check it and record the result."
+            >
+              {manual.map((m) => {
+                const decision = decisions.get(manualCheckKey(r.id, m.ref));
                 return (
                   <button
-                    key={v}
-                    className="chip"
-                    aria-pressed={filter === v}
-                    onClick={() => setFilter(v)}
+                    key={m.ref}
+                    className="finding-row"
+                    aria-pressed={m.ref === shownManual?.ref}
+                    onClick={() => {
+                      setPin(null);
+                      setManualRef(m.ref);
+                    }}
                   >
-                    {v.replace("_", " ")} {count}
+                    <span className="status">By hand</span>
+                    <span>
+                      <strong>{m.ref}</strong>
+                      <small>{m.whats.join(" ")}</small>
+                      <small>
+                        {m.spaces.length} {m.spaces.length === 1 ? "room" : "rooms"}
+                      </small>
+                      {decision && (
+                        <small className="decided">{DECISION_LABEL[decision.decision]}</small>
+                      )}
+                    </span>
                   </button>
                 );
               })}
-            </div>
-            {shown.map((f) => {
-              const decision = decisions.get(decisionKey(f));
-              return (
-                <button
+            </CheckGroup>
+            <CheckGroup
+              title="Passed"
+              tone="pass"
+              count={passes.length}
+              open={showPassedList}
+              onToggle={setShowPassedList}
+            >
+              {passes.map((f) => (
+                <FindingRow
                   key={f.pin}
-                  className="finding-row"
-                  aria-pressed={f.pin === currentFinding?.pin}
-                  onClick={() => setPin(f.pin ?? null)}
-                >
-                  <VerdictTag verdict={f.verdict} />
-                  <span>
-                    <strong>
-                      {f.pin} · {f.subject_name}
-                    </strong>
-                    <small>{f.rule_title}</small>
-                    {f.measured_display && (
-                      <small>
-                        {f.measured_display} · limit {symbol(f.operator)} {f.required_display}
-                      </small>
-                    )}
-                    {decision && (
-                      <small className="decided">{decision.decision.replace("_", " ")}</small>
-                    )}
-                  </span>
-                </button>
-              );
-            })}
-            {findings.length === 0 && <p className="pad muted">Nothing could be measured here.</p>}
+                  finding={f}
+                  active={f.pin === currentFinding?.pin}
+                  decision={decisions.get(decisionKey(f))}
+                  onOpen={() => openFinding(f)}
+                />
+              ))}
+            </CheckGroup>
+            {findings.length === 0 && manual.length === 0 && (
+              <p className="pad muted">Nothing to check yet. Name the rooms first.</p>
+            )}
             {notApplied.length > 0 && (
               <details className="set-aside">
                 <summary>{notApplied.length} checks could not be done on this deck</summary>
@@ -357,7 +417,7 @@ function AnalysisResult({ jobId }: { jobId: string }) {
               </details>
             )}
           </section>
-          {currentFinding && (
+          {currentFinding ? (
             <FindingDetail
               key={currentFinding.pin}
               finding={currentFinding}
@@ -368,19 +428,23 @@ function AnalysisResult({ jobId }: { jobId: string }) {
               plan={plan}
               mmPerUnit={r.mm_per_unit ?? null}
             />
-          )}
+          ) : shownManual ? (
+            <ManualCheckDetail
+              key={shownManual.ref}
+              check={shownManual}
+              floor={floorName(r.deck ?? null, r.source)}
+              decisionKey={manualCheckKey(r.id, shownManual.ref)}
+              decision={decisions.get(manualCheckKey(r.id, shownManual.ref))}
+              onOpenSpace={openSpace}
+            />
+          ) : null}
         </div>
-      ) : tab === "Regulations" ? (
-        <AllRegulations
-          regulations={regulations}
-          unnamed={ordered.filter(needsNameFirst)}
-          onOpenSpace={openSpace}
-        />
       ) : (
         <div className="findings-layout">
-          <section className="card findings-list" aria-label="Spaces">
+          <section className="card findings-list" aria-label="Rooms">
             <div className="card-head">
-              <h2>Spaces</h2>
+              <h2>Rooms</h2>
+              <span className="muted">Check names and types. The checks depend on them.</span>
             </div>
             {ordered.map((s) => (
               <button
@@ -510,45 +574,180 @@ function SpaceDetail({ jobId, space: s }: { jobId: string; space: AnalysedSpace 
   );
 }
 
-function AllRegulations({
-  regulations,
-  unnamed,
-  onOpenSpace,
+function CheckGroup({
+  title,
+  tone,
+  count,
+  hint,
+  open,
+  onToggle,
+  children,
 }: {
-  regulations: Regulation[];
-  unnamed: AnalysedSpace[];
-  onOpenSpace: (space: AnalysedSpace) => void;
+  title: string;
+  tone: "fail" | "review" | "manual" | "pass";
+  count: number;
+  hint?: string;
+  /** Given for a group that starts closed, such as the passed checks. */
+  open?: boolean;
+  onToggle?: (open: boolean) => void;
+  children: ReactNode;
+}) {
+  if (count === 0) return null;
+  const collapsible = onToggle !== undefined;
+  return (
+    <div className="check-group" data-tone={tone}>
+      <button
+        className="check-group-head"
+        disabled={!collapsible}
+        aria-expanded={collapsible ? open : undefined}
+        onClick={() => onToggle?.(!open)}
+      >
+        <h2>{title}</h2>
+        <span className="check-count">{count}</span>
+        {collapsible && <span className="muted">{open ? "Hide" : "Show"}</span>}
+      </button>
+      {hint && <p className="muted check-hint">{hint}</p>}
+      {(!collapsible || open) && children}
+    </div>
+  );
+}
+
+function FindingRow({
+  finding: f,
+  active,
+  decision,
+  onOpen,
+}: {
+  finding: Finding;
+  active: boolean;
+  decision: Decision | undefined;
+  onOpen: () => void;
 }) {
   return (
-    <section className="card" aria-label="All regulations">
-      {regulations.length === 0 && <p className="pad muted">No regulations to list.</p>}
-      {unnamed.length > 0 && (
-        <p className="pad text-warn">
-          {unnamed.length} spaces have no regulations yet, because Keel does not know their type.
-          Name them in the Spaces tab and their regulations will appear here.
-        </p>
-      )}
-      {regulations.map((x) => (
-        <div key={x.ref} className="list-row">
-          <div>
-            <strong>{x.ref}</strong>
-            {!x.confirmed && <small className="text-warn">Reference not yet confirmed</small>}
-            {x.whats.map((what) => (
-              <small key={what} className="muted">
-                {what}
-              </small>
-            ))}
-            <span className="space-links">
-              {x.spaces.map((s) => (
-                <button key={s.number} onClick={() => onOpenSpace(s)}>
-                  {spaceName(s)}
-                </button>
-              ))}
-            </span>
-          </div>
-          <span className="status">{x.measured > 0 ? `${x.measured} measured` : "To check"}</span>
-        </div>
-      ))}
+    <button className="finding-row" aria-pressed={active} onClick={onOpen}>
+      <VerdictTag verdict={f.verdict} />
+      <span>
+        <strong>
+          {f.pin} · {f.subject_name}
+        </strong>
+        <small>{f.rule_title}</small>
+        {f.measured_display && (
+          <small>
+            {f.measured_display} · limit {symbol(f.operator)} {f.required_display}
+          </small>
+        )}
+        {decision && <small className="decided">{DECISION_LABEL[decision.decision]}</small>}
+      </span>
+    </button>
+  );
+}
+
+/** A regulation Keel could not measure. The engineer checks it and the result goes in the log. */
+function ManualCheckDetail({
+  check,
+  floor,
+  decisionKey,
+  decision,
+  onOpenSpace,
+}: {
+  check: Regulation;
+  floor: string;
+  decisionKey: string;
+  decision: Decision | undefined;
+  onOpenSpace: (space: AnalysedSpace) => void;
+}) {
+  const [note, setNote] = useState("");
+  const record = useRecordDecision();
+  const decide = (kind: DecisionKind) =>
+    record.mutate(
+      {
+        finding: decisionKey,
+        rule_id: check.ref.slice(0, 100),
+        subject: floor,
+        decision: kind,
+        note: kind === "cleared" ? "" : note.trim(),
+      },
+      { onSuccess: () => setNote("") },
+    );
+  return (
+    <section className="card finding-detail" aria-label={`Check ${check.ref} by hand`}>
+      <header>
+        <span className="status">Check by hand</span>
+        <h2>{check.ref}</h2>
+        {!check.confirmed && <small className="text-warn">Reference not yet confirmed</small>}
+      </header>
+      <div>
+        <span className="eyebrow">What to check</span>
+        {check.whats.map((what) => (
+          <p key={what}>{what}</p>
+        ))}
+      </div>
+      <div>
+        <span className="eyebrow">Rooms ({check.spaces.length}), highlighted on the plan</span>
+        <span className="space-links">
+          {check.spaces.map((s) => (
+            <button key={s.number} onClick={() => onOpenSpace(s)}>
+              {spaceName(s)}
+            </button>
+          ))}
+        </span>
+      </div>
+      <p className="muted">
+        Keel cannot measure this from the drawing. Check it against the other drawings or the
+        specification.
+      </p>
+      <div className="decision">
+        {decision ? (
+          <p>
+            <strong>{DECISION_LABEL[decision.decision]}</strong> ·{" "}
+            {new Date(decision.at).toLocaleString()}
+            {decision.note && ` · “${decision.note}”`}{" "}
+            <button className="link" disabled={record.isPending} onClick={() => decide("cleared")}>
+              Undo
+            </button>
+          </p>
+        ) : (
+          <>
+            <label>
+              Note (optional)
+              <input
+                value={note}
+                maxLength={2000}
+                placeholder="What you checked, e.g. drawing number"
+                onChange={(e) => setNote(e.target.value)}
+              />
+            </label>
+            <div className="row">
+              <button
+                className="btn primary"
+                disabled={record.isPending}
+                onClick={() => decide("complies")}
+              >
+                Complies
+              </button>
+              <button
+                className="btn"
+                disabled={record.isPending}
+                onClick={() => decide("does_not_comply")}
+              >
+                Does not comply
+              </button>
+              <button
+                className="btn"
+                disabled={record.isPending}
+                onClick={() => decide("need_info")}
+              >
+                Need info
+              </button>
+            </div>
+          </>
+        )}
+        {record.isError && (
+          <p className="text-fail" role="alert">
+            Could not save: {record.error.message}
+          </p>
+        )}
+      </div>
     </section>
   );
 }

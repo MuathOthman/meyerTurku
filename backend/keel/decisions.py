@@ -17,7 +17,8 @@ class DecisionInput(BaseModel):
     finding: str = Field(min_length=1, max_length=300)
     rule_id: str = Field(min_length=1, max_length=100)
     subject: str = Field(min_length=1, max_length=300)
-    decision: Literal["accepted", "need_info", "rejected", "cleared", "renamed"]
+    # complies / does_not_comply record a regulation an engineer checked by hand.
+    decision: Literal["accepted", "need_info", "rejected", "cleared", "renamed", "complies", "does_not_comply"]
     note: str = Field(default="", max_length=2000)
 
 

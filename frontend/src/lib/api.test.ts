@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   currentDecisions,
   findingKey,
+  manualChecksOf,
   needsNameFirst,
   NO_REGULATIONS_YET,
   regulationsOf,
@@ -102,6 +103,18 @@ describe("regulationsOf", () => {
     expect(solas.whats).toEqual(["Doors", "Width"]);
     expect(solas.measured).toBe(1);
     expect(list[0]!.confirmed).toBe(false);
+  });
+
+  it("leaves for checking by hand only what was not measured", () => {
+    const list = manualChecksOf([
+      space(1, ["SOLAS B", "Doors", true, true], ["MLC A", "Berths", false, false]),
+      space(2, ["SOLAS B", "Doors", true, false]),
+      space(3, ["SOLAS C", "Width", true, true]),
+    ]);
+    expect(list.map((r) => r.ref)).toEqual(["MLC A", "SOLAS B"]);
+    expect(list[1]!.spaces.map((s) => s.number)).toEqual([2]);
+    // The space keeps its full checklist, so its detail still shows what was measured.
+    expect(list[0]!.spaces[0]!.checklist).toHaveLength(2);
   });
 
   it("does not count the placeholder for an unnamed space as a regulation", () => {
