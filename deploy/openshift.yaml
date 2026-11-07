@@ -47,9 +47,10 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /app/data/processed
+          # Reading a large sheet with OCR peaked above 3 GiB.
           resources:
-            requests: { cpu: 500m, memory: 1Gi }
-            limits: { memory: 3Gi }
+            requests: { cpu: 500m, memory: 2Gi }
+            limits: { cpu: "2", memory: 8Gi }
           # The first start downloads the sample drawing and builds the demo deck.
           startupProbe:
             httpGet: { path: /api/projects, port: 8000 }
