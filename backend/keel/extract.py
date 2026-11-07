@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import Path
 
 import pymupdf
@@ -26,7 +27,7 @@ class Segment:
     width: float = 0.0
     gray: bool = False
 
-    @property
+    @cached_property
     def length(self) -> float:
         return math.hypot(self.x1 - self.x0, self.y1 - self.y0)
 

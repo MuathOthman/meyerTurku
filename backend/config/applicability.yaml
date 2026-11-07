@@ -15,6 +15,7 @@ stair:
   - {ref: "SOLAS II-2/13.3.2.4.1", what: "Passenger ships: an enclosed stairway giving continuous fire shelter to the embarkation level.", confirmed: true}
   - {ref: "FSS Code ch.13", what: "Clear stair width.", confirmed: true, rule: ESC-STAIR-WIDTH}
   - {ref: "IMO Res. A.757(18)", what: "Stair width against the persons it serves. Needs the persons count for each deck.", confirmed: true}
+  - {ref: "DNV Rules for Ships 2015, Pt.5 Ch.2 Sec.2 E 602", what: "A stair that is the sole means of escape under a dispensation: at least 800 mm clear, handrails both sides.", confirmed: true, rule: CLASS-DNV-SOLE-STAIR}
   - {ref: "SOLAS II-2/13.2.2", what: "A lift does not count as a means of escape.", confirmed: true}
 
 cabin:
@@ -29,6 +30,7 @@ medical:
 
 galley:
   - {ref: "SOLAS II-2/13.3.2.3", what: "Passenger ships: a galley may reach a stair enclosure only through a lobby of at least 4.5 m2, at least 900 mm wide, with a fire hose station.", confirmed: true}
+  - {ref: "DNV Rules for Ships 2015, Pt.5 Ch.2 Sec.2 E 604", what: "Lobby to a stair: at least 4.5 m2, at least 900 mm wide, with a fire hose station.", confirmed: true, rule: CLASS-DNV-GALLEY-LOBBY}
   - {ref: "SOLAS II-2/9", what: "Fire integrity of the boundaries and ventilation ducts.", confirmed: false}
   - {ref: "SOLAS II-2/10", what: "Fire extinguishing arrangements, including deep-fat cookers if fitted.", confirmed: false}
 

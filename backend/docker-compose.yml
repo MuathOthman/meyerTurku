@@ -3,7 +3,9 @@
 #   KEEL_LLM_PROVIDER=ollama docker compose --profile local up
 services:
   api:
-    build: .
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
     ports: ["8000:8000"]
     environment:
       KEEL_LLM_PROVIDER: ${KEEL_LLM_PROVIDER:-openai}

@@ -4,37 +4,58 @@
 
 - id: ESC-CORRIDOR-WIDTH
   title: Minimum clear width of corridors on escape routes
-  source: "SOLAS II-2/13.3.3.5 refers to FSS Code ch.13"
-  ref_url: "https://assets.publishing.service.gov.uk/media/5a80f3c6ed915d74e33fd543/Regulation_13_-_Means_of_Escape.pdf"
+  source: "FSS Code ch.13, passenger ships 2.3.1 (sized as stairways, 2.1.1), via SOLAS II-2/13.3.2.4.5"
+  ref_url: "https://imorules.com/GUID-AFE2E2CA-D9CB-484A-969A-385A1B19DFDD.html"
   type: numeric
   scope: escape
   applies_to: [corridor]
   parameter: clear_width
   operator: ">="
   value_mm: 900
-  value_status: assumed
+  value_status: verified
   check: corridor_width
   interpretation_note: >-
-    SOLAS defers the width to the FSS Code. 900 mm is our placeholder for the FSS Code
-    minimum, which we have not read in the original. Handrails and door trim are normally
-    allowed to project slightly, so thin wall symbols are ignored in this measurement.
-
+    Limits read in a third-party copy of the FSS Code, not the IMO original. Passenger ships size
+    corridors the same way as stairways, so at least 900 mm. Cargo ships need at least 700 mm. Clear
+    width is measured to the handrail where one is fitted, which a plan does not show.
+  why_it_matters: >-
+    In an emergency people move along this corridor in a crowd, sometimes in smoke or carrying
+    someone. A narrow point slows everyone behind it, so the narrowest point sets the limit.
+  fix: >-
+    Widen the narrowest point by at least {shortfall} mm to reach {required} mm clear, by moving the
+    partition or removing what projects into the route. If this branch is not an escape route, record that reason.
+  ship_values:
+    cargo:
+      value_mm: 700
+      source: "FSS Code ch.13, cargo ships, via SOLAS II-2/13.3.3.5"
+      ref_url: "https://www.imorules.com/GUID-06E84CE3-61E4-42AA-B917-E953D46A4411.html"
 - id: ESC-STAIR-WIDTH
   title: Minimum clear width of stairways on escape routes
-  source: "FSS Code ch.13"
-  ref_url: ""
+  source: "FSS Code ch.13, passenger ships 2.1.1"
+  ref_url: "https://imorules.com/GUID-AFE2E2CA-D9CB-484A-969A-385A1B19DFDD.html"
   type: numeric
   scope: escape
   applies_to: [stair]
   parameter: clear_width
   operator: ">="
   value_mm: 900
-  value_status: assumed
+  value_status: verified
   check: stair_width
   interpretation_note: >-
-    900 mm is our placeholder for the FSS Code minimum. SOLAS II-2/13.3.2.1.2 uses 800 mm
-    for a sole means of escape under a dispensation, so 900 mm is not the only possible value.
-
+    Limits read in a third-party copy of the FSS Code, not the IMO original. Passenger ships need
+    at least 900 mm, plus 10 mm per person above 90. Cargo ships need at least 700 mm. Handrails
+    are not deducted, because a plan does not show them.
+  why_it_matters: >-
+    A stair is where people from several spaces merge, so it is usually the tightest point of an
+    escape route. Too narrow, and a queue forms where people are most at risk.
+  fix: >-
+    Widen the stair by at least {shortfall} mm to reach {required} mm clear between handrails. This
+    usually means moving a stair enclosure bulkhead, so check the structure and the spaces on both sides.
+  ship_values:
+    cargo:
+      value_mm: 700
+      source: "FSS Code ch.13, cargo ships"
+      ref_url: "https://www.imorules.com/GUID-06E84CE3-61E4-42AA-B917-E953D46A4411.html"
 - id: ESC-STAIR-CAPACITY
   title: Stair width must carry the persons it serves
   source: "IMO Res. A.757(18): W = (N1 + N2) x 10 mm"
@@ -50,7 +71,11 @@
   interpretation_note: >-
     For two decks joined, N1 and N2 are the persons on the two decks. Persons on other
     decks are an input, because this drawing shows one deck. The result depends on it.
-
+  why_it_matters: >-
+    The minimum width is not enough on a busy stair. The width must carry everyone who would use
+    it, or people wait on the stair and the decks below.
+  fix: >-
+    Widen the stair by {shortfall} mm to reach {required} mm, add a second stair to share the load, or reduce the persons it serves.
 - id: ESC-DOOR-WIDTH
   title: Minimum clear width of doors on escape routes
   source: "Assumed, for demonstration"
@@ -64,10 +89,21 @@
   value_status: assumed
   check: escape_door_width
   interpretation_note: >-
-    Assumed value. Clear width is estimated as leaf width minus a frame allowance, because
-    the drawing does not dimension door stops. Small doors under 600 mm are lockers and
-    are not treated as escape doors.
-
+    On cargo ships a doorway to a stairway matches the stair width, so at least 700 mm, from a
+    third-party copy of the FSS Code. On passenger ships the code sizes doorways as stairways. The
+    700 mm used for them here is a placeholder for demonstration, shown as assumed. Clear width is
+    estimated as leaf width minus a frame allowance, since drawings do not dimension door stops.
+  why_it_matters: >-
+    A door is the narrowest part of most escape routes. If it is tighter than the route it serves,
+    it sets how fast everyone behind it can leave.
+  fix: >-
+    Fit a wider door or frame, adding at least {shortfall} mm of clear opening to reach {required} mm.
+    Check that the wider leaf still swings clear of the corridor and of the room behind it.
+  ship_values:
+    cargo:
+      value_status: verified
+      source: "FSS Code ch.13, cargo ships"
+      ref_url: "https://www.imorules.com/GUID-06E84CE3-61E4-42AA-B917-E953D46A4411.html"
 - id: ESC-DOOR-SWING
   title: Doors on escape routes open in the direction of escape
   source: "SOLAS II-2/13.3.1.5"
@@ -82,7 +118,11 @@
     The rule says "in general". Individual cabin doors may open into the cabin so they do
     not hit people in the corridor, and escape trunk doors may open out of the trunk. So
     cabin doors are exempt here.
-
+  why_it_matters: >-
+    People pushed from behind in an emergency can jam a door that opens against them. A door that
+    opens the way they are moving gives way under that same pressure.
+  fix: >-
+    Rehang this door so it opens in the direction of escape, and check the leaf does not block the corridor when open.
 - id: ESC-TWO-MEANS
   title: At least two means of escape from each accommodation zone
   source: "SOLAS II-2/13.3.2.2"
@@ -98,7 +138,10 @@
     The regulation is written per main vertical zone or similar restricted space, for
     passenger ships. Here a corridor stands for the group of spaces it serves. Whether two
     exits are truly independent also depends on fire zoning, which this drawing lacks.
-
+  why_it_matters: >-
+    One fire can block one route. A second, separate route means people still have a way out.
+  fix: >-
+    Add a second route to a different exit, widely separated from the first. A ladder or escape trunk may be accepted where a stair will not fit, so check with the Administration.
 - id: ESC-DEAD-END
   title: Maximum length of a dead-end corridor
   source: "SOLAS II-2/13.3.3.4, recess exception in 13.3.1"
@@ -115,3 +158,55 @@
     The 7 m limit sits in the cargo ship section; passenger ships are stricter in parts of
     the regulation. A part of a corridor no deeper than its width counts as a recess, not a
     dead end, so the local width is subtracted.
+  why_it_matters: >-
+    Someone who walks into a dead end in smoke has to turn back towards the danger, and loses time they may not have.
+  fix: >-
+    Shorten the dead end by at least {shortfall} mm to reach {required} mm or less, or connect its far end to another route.
+# Class rules. DNV's current DNV-RU-SHIP editions need a login, so these cite the newest edition
+# readable without one. Check the current edition before relying on the clause numbers.
+
+- id: CLASS-DNV-SOLE-STAIR
+  ship_types: [passenger]
+  title: Stairway that is the sole means of escape
+  source: "DNV Rules for Ships, July 2015, Pt.5 Ch.2 Sec.2 E 602"
+  ref_url: "https://rules.dnv.com/docs/pdf/DNVPM/rulesship/2015-07/ts502.pdf"
+  type: numeric
+  scope: escape
+  applies_to: [stair]
+  parameter: clear_width
+  operator: ">="
+  value_mm: 800
+  value_status: verified
+  check: sole_stair
+  interpretation_note: >-
+    Written for passenger ships, below the bulkhead deck, where the Society has dispensed with
+    one of the two means of escape from crew spaces entered only occasionally. Handrails are
+    required on both sides, which the plan does not show. Keel cannot tell whether a stair is
+    under such a dispensation, so a shortfall goes to review and never fails on this rule.
+  why_it_matters: >-
+    When a stair is the only way out, there is no second route if it is crowded, so a minimum width and handrails on both sides are required.
+  fix: >-
+    If this stair really is a sole means of escape, widen it by at least {shortfall} mm to reach {required} mm. Otherwise record that a second route exists.
+- id: CLASS-DNV-GALLEY-LOBBY
+  ship_types: [passenger]
+  title: Lobby between a galley or main laundry and a stairway
+  source: "DNV Rules for Ships, July 2015, Pt.5 Ch.2 Sec.2 E 604"
+  ref_url: "https://rules.dnv.com/docs/pdf/DNVPM/rulesship/2015-07/ts502.pdf"
+  type: numeric
+  scope: escape
+  applies_to: [galley, laundry]
+  parameter: lobby_size
+  operator: ">="
+  value_mm: 900
+  minimum_area_m2: 4.5
+  value_status: verified
+  check: galley_lobby
+  interpretation_note: >-
+    Written for passenger ships. The lobby needs at least 4.5 m2 of deck area, at least 900 mm
+    of width and a fire hose station. Keel measures the first two and cannot see the third. It
+    also cannot tell a main laundry from a small one, or whether a corridor was meant as this
+    lobby, so every result goes to review.
+  why_it_matters: >-
+    Galleys and laundries are common sources of fire. A lobby keeps smoke and flame out of the stair people need to escape by.
+  fix: >-
+    Confirm a fire hose station is in this space. If the lobby is too small, enlarge it to at least 4.5 m2 and {required} mm wide.

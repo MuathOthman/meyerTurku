@@ -9,6 +9,8 @@ from keel.checks.escape import (
     dead_end,
     door_swing,
     escape_door_width,
+    galley_lobby,
+    sole_stair,
     stair_capacity,
     stair_width,
     two_means,
@@ -26,6 +28,8 @@ CHECKS: dict[str, Callable[[Deck, Rule], list[Finding]]] = {
     "door_swing": door_swing,
     "two_means": two_means,
     "dead_end": dead_end,
+    "sole_stair": sole_stair,
+    "galley_lobby": galley_lobby,
     "accessible_door": accessible_door,
     "accessible_route": accessible_route,
     "accessible_turning": accessible_turning,
@@ -46,8 +50,8 @@ def run_checks(deck: Deck, rules: list[Rule]) -> list[Finding]:
 
 
 def _optional_when_empty(rule: Rule) -> bool:
-    """ADA rules run only on spaces marked accessible, so having no subject is expected."""
-    return "accessible" in rule.applies_to
+    """ADA rules need spaces marked accessible, and many decks have no galley. Neither is a gap."""
+    return bool({"accessible", "galley"} & set(rule.applies_to))
 
 
 def _not_applied(deck: Deck, rule: Rule) -> Finding:

@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import re
 import statistics
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
@@ -22,15 +23,16 @@ from pathlib import Path
 import cv2
 import numpy as np
 import yaml
-from shapely.geometry import Point as ShapelyPoint
+from shapely.geometry import Point as ShapelyPoint, box
 from shapely.strtree import STRtree
 
 from keel.checks import run_checks
+from keel.geometry import inscribed_diameter
 from keel.classify import LLM_CONFIDENCE_CAP, classify, classify_by_keyword
 from keel.labels import (
     block_has_leader,
     group_blocks,
-    leader_tail_strokes,
+    trace_all_leaders,
     parse_compartment,
     place_labels,
     read_rotated_blocks,
@@ -41,9 +43,11 @@ from keel.labels import (
 from keel.llm import LLM, LLMError
 from keel.model import Category, Deck, Door, Space
 from keel.raster import Segmentation, draw_numbers, load_gray
+from keel.report import sort_findings
 from keel.rules import load_rules
 from keel.spaces import FoundSpaces, find_spaces
-from keel.verdict import Finding
+from keel.stairs import find_stairs
+from keel.verdict import Finding, Verdict
 
 log = logging.getLogger(__name__)
 
@@ -54,6 +58,9 @@ LARGE_AREA_RATIO = 0.6  # Of the median room area. Bigger areas stay on the engi
 DETAIL_AREA_RATIO = 0.1  # A far smaller area with the same compartment number is a room's detail.
 # These depend on inputs a single unlabelled drawing does not give.
 RULES_NEEDING_INPUT = {"ESC-STAIR-CAPACITY"}
+STAIR_NUMBERS = 10000  # Detected stairs are numbered above any found space.
+COULD_NOT_CHECK = ("No exit door", "0 independent", "Fewer than two doors", "This rule could not")
+CORRIDOR_MAY_BE = {Category.UNKNOWN, Category.OPEN_DECK, Category.SERVICE, Category.PUBLIC}
 
 NAMING_SCHEMA = {
     "type": "object",
@@ -136,6 +143,14 @@ class Analysis:
     region: tuple | None
     px_per_unit: float
     labels: np.ndarray
+    plan: np.ndarray | None = None  # The clean drawing, with no tags or tint.
+    plan_offset: tuple[int, int] = (0, 0)  # Where labels start on the plan.
+    plan_origin: tuple[float, float] = (0.0, 0.0)  # Drawing units at the plan's top left corner.
+    findings: list[Finding] = field(default_factory=list)
+    mm_per_unit: float | None = None
+    ship_type: str = "passenger"
+    doors_found: int = 0
+    stairs_found: int = 0
 
 
 def _tiles(shape: tuple[int, int], max_side: int = 2600, overlap: float = 0.12) -> list[tuple[int, int, int, int]]:
@@ -174,7 +189,13 @@ def _context_view(found: FoundSpaces, path, page: int, margin_pt: float = 45.0, 
     return draw_numbers(found.gray, found.segmentation, only=only), found.gray, 0, 0
 
 
-def name_with_vision(view: np.ndarray, spaces, offset: tuple[int, int], llm: LLM) -> tuple[dict[int, dict], int, int]:
+def name_with_vision(
+    view: np.ndarray,
+    spaces,
+    offset: tuple[int, int],
+    llm: LLM,
+    on_view: Callable[[int, int], None] = lambda done, total: None,
+) -> tuple[dict[int, dict], int, int]:
     """Ask the vision model about each tile. Returns (answers, views failed, views total)."""
     jobs = []
     for x0, y0, x1, y1 in _tiles(view.shape[:2]):
@@ -196,13 +217,16 @@ def name_with_vision(view: np.ndarray, spaces, offset: tuple[int, int], llm: LLM
     failures = 0
     with ThreadPoolExecutor(max_workers=4) as pool:
         futures = [pool.submit(ask, job) for job in jobs]
-        for future in futures:
+        on_view(0, len(jobs))
+        for done, future in enumerate(futures, start=1):
             try:
                 present, result = future.result()
             except LLMError as error:
                 failures += 1
                 log.warning("A view could not be named: %s", error)
                 continue
+            finally:
+                on_view(done, len(jobs))
             for item in result.get("spaces", []):
                 number = item.get("number")
                 if number in present and float(item.get("confidence", 0)) >= float(answers.get(number, {}).get("confidence", -1)):
@@ -265,11 +289,11 @@ def read_printed_labels(found: FoundSpaces, margin_pt: float = 45.0) -> dict[int
     inside = lambda p: wide[0] <= p[0] <= wide[2] and wide[1] <= p[1] <= wide[3]
     segments = [s for s in found.primitives.segments if inside(s.midpoint)]
     curves = [c for c in found.primitives.curves if inside(c.p0)]
-    tails = leader_tail_strokes(found.dots, segments)
+    traces, tails = trace_all_leaders(found.dots, segments)
     image = render_text_layer(segments, curves, wide, scale=OCR_SCALE, exclude=tails)
     blocks = [b for b in group_blocks(run_ocr_tiled(image, wide, OCR_SCALE)) if _is_room_text(b)]
     blocks += read_rotated_blocks(image, wide, OCR_SCALE)
-    placed = place_labels(blocks, found.dots, segments)
+    placed = place_labels(blocks, found.dots, segments, traces=traces)
 
     cells = list(found.cells_pt.values())
     numbers = list(found.cells_pt.keys())
@@ -435,7 +459,91 @@ def _door_side(cells, tree, numbers, door, sign: float) -> int | None:
     return None
 
 
-def _to_deck(found: FoundSpaces, named: list[NamedSpace], mm_per_pt: float, source: str, page: int, merged_into: dict[int, int]) -> Deck:
+JUNK_NAME = re.compile(
+    r"^(\W*|[\d.,\s]+|for|tray|shel[fe]|table|chairs?|sofa.*|.*\b(table|sofa|seating|chairs?)\b.*)$", re.IGNORECASE
+)
+CREW_CABIN_MARK = re.compile(r"^\d\s*M$", re.IGNORECASE)  # "2M": a cabin for two.
+
+
+def _clean_exploded_names(named: list[NamedSpace]) -> None:
+    """On a dense plan, OCR and AI also read furniture and stray marks. Those are not room names."""
+    for space in named:
+        if CREW_CABIN_MARK.match(space.name.strip()):
+            space.category = Category.CABIN
+        elif JUNK_NAME.match(space.name.strip()):
+            space.name, space.category, space.confidence = "Unidentified space", Category.UNKNOWN, 0.0
+            space.name_on_drawing = False
+
+
+def _mark_corridors(found: FoundSpaces, named: list[NamedSpace], mm_per_pt: float) -> None:
+    """Corridors often have no printed name. Long, narrow and lined with doors is a corridor.
+
+    This is read from shape, so its confidence stays below the trust level: a shortfall can
+    only go to an engineer, never to FAIL.
+    """
+    named_passage = re.compile(r"passage|corridor|walkway", re.IGNORECASE)
+    for space in named:
+        cell = found.cells_pt.get(space.number)
+        if cell is None:
+            continue
+        width, _ = inscribed_diameter(cell)
+        if width <= 0:
+            continue
+        width_mm = width * mm_per_pt
+        if space.category == Category.STAIR and width_mm < 500:
+            # Read as a stair from its name, but too thin to walk: a sliver beside one.
+            space.category, space.confidence = Category.UNKNOWN, 0.0
+            continue
+        if space.category != Category.CORRIDOR and space.category not in CORRIDOR_MAY_BE:
+            continue
+        if space.category == Category.CORRIDOR and width_mm < 500:
+            space.category, space.confidence = Category.UNKNOWN, 0.0
+            continue
+        doors = sum(cell.distance(ShapelyPoint(d.hinge)) <= 3.0 for d in found.doors)
+        long_and_narrow = 500 <= width_mm <= 3000 and cell.area / (width * width) >= 3.5
+        passage_by_name = space.category == Category.CORRIDOR or bool(named_passage.search(space.name))
+        if long_and_narrow and (doors >= 3 or passage_by_name):
+            space.category = Category.CORRIDOR
+            space.confidence = min(space.confidence or 0.7, 0.7)
+            space.evidence = "shape"
+            if not space.name_on_drawing:
+                space.name = "Corridor"
+        elif space.category == Category.CORRIDOR:
+            space.evidence = "shape"
+
+
+def _detected_stairs(found: FoundSpaces, named: list[NamedSpace], mm_per_pt: float, labels: np.ndarray, table: dict) -> list[NamedSpace]:
+    """Stairs drawn inside bigger spaces have no room of their own, so add them as spaces.
+
+    They are read from their treads, not a label, so the confidence stays below the trust level
+    and an engineer confirms each. A false stair can then only ever reach review.
+    """
+    x0, y0, x1, y1 = found.region
+    inside = [
+        s for s in found.primitives.segments
+        if x0 <= s.midpoint[0] <= x1 and y0 <= s.midpoint[1] <= y1 and s.width > 0
+    ]
+    stairs = find_stairs(inside, (500 / mm_per_pt, 2000 / mm_per_pt), (150 / mm_per_pt, 400 / mm_per_pt))
+    known = [found.cells_pt[s.number] for s in named if s.category == Category.STAIR and s.number in found.cells_pt]
+    extra: list[NamedSpace] = []
+    for index, stair in enumerate(stairs, start=1):
+        bx0, by0, bx1, by1 = stair.box
+        center = ((bx0 + bx1) / 2, (by0 + by1) / 2)
+        if any(cell.contains(ShapelyPoint(center)) for cell in known):
+            continue
+        number = STAIR_NUMBERS + index
+        scale = found.px_per_unit
+        labels[int((by0 - y0) * scale) : int((by1 - y0) * scale) + 1, int((bx0 - x0) * scale) : int((bx1 - x0) * scale) + 1] = number
+        space = NamedSpace(
+            number, f"Stairway {len(extra) + 1}", None, Category.STAIR, 0.7, "treads", False,
+            (bx1 - bx0) * (by1 - by0) * (mm_per_pt / 1000) ** 2, (int((center[0] - x0) * scale), int((center[1] - y0) * scale)),
+        )
+        extra.append(space)
+        found.cells_pt[number] = box(bx0, by0, bx1, by1)
+    return extra
+
+
+def _to_deck(found: FoundSpaces, named: list[NamedSpace], mm_per_pt: float, source: str, page: int, merged_into: dict[int, int], relative_error: float = 0.005) -> Deck:
     """Build the same ship model the reviewed pipeline uses, so all checks run unchanged."""
     from keel.geometry import side_of_line
 
@@ -453,7 +561,7 @@ def _to_deck(found: FoundSpaces, named: list[NamedSpace], mm_per_pt: float, sour
                 compartment=info.compartment,
                 category=info.category,
                 classification_confidence=info.confidence,
-                label_source="ai_vision",
+                label_source="shape" if info.evidence == "shape" else "ai_vision",
                 anchor_mm=(cell.representative_point().x * mm_per_pt, cell.representative_point().y * mm_per_pt),
                 exterior_mm=[(x * mm_per_pt, y * mm_per_pt) for x, y in cell.exterior.coords],
                 interiors_mm=[[(x * mm_per_pt, y * mm_per_pt) for x, y in ring.coords] for ring in cell.interiors],
@@ -474,6 +582,9 @@ def _to_deck(found: FoundSpaces, named: list[NamedSpace], mm_per_pt: float, sour
     for index, door in enumerate(sorted(found.doors, key=lambda d: (round(d.hinge[0]), round(d.hinge[1]))), start=1):
         a = space_id(_door_side(cells, tree, numbers, door, 1.0))
         b = space_id(_door_side(cells, tree, numbers, door, -1.0))
+        # On a very detailed drawing, cabinet doors also have arcs. A real door joins two spaces.
+        if found.exploded and (a is None or a == b):
+            continue
         positive = side_of_line(door.hinge, door.latch, door.arc_mid) > 0
         doors.append(
             Door(
@@ -494,7 +605,7 @@ def _to_deck(found: FoundSpaces, named: list[NamedSpace], mm_per_pt: float, sour
         source_pdf=Path(source).name,
         page_index=page,
         mm_per_pt=mm_per_pt,
-        relative_error=0.005,  # User-given scale, so no second reference has verified it.
+        relative_error=relative_error,
         extraction_tolerance_mm=0.36 * mm_per_pt,
         spaces=spaces,
         doors=doors,
@@ -507,14 +618,27 @@ def analyze(
     page: int = 0,
     region: tuple | None = None,
     mm_per_unit: float | None = None,
+    on_step: Callable[[str, str], None] = lambda step, detail: None,
+    ship_type: str = "passenger",
+    relative_error: float = 0.005,
+    scale_note_override: str | None = None,
 ) -> Analysis:
-    """Analyse a new drawing. mm_per_unit is mm per PDF point, or per pixel for an image."""
+    """Analyse a new drawing. mm_per_unit is mm per PDF point, or per pixel for an image.
+
+    on_step(step, detail) reports progress, so a caller can show what is happening.
+    """
     path = Path(path)
+    on_step("Finding rooms and doors", "")
     found = find_spaces(path, page, region, mm_per_unit if path.suffix.lower() == ".pdf" else None)
-    view, clean, ox, oy = _context_view(found, path, page)
+    clean, ox, oy = _context_view(found, path, page, only=set())[1:]
 
     # First what geometry and OCR can prove, then the vision model for whatever is left.
+    on_step("Reading room labels", "")
     answers: dict[int, dict] = read_printed_labels(found) if found.route == "vector" else read_printed_labels_raster(found, found.gray)
+    # The vector reader relies on the text line weight of one CAD standard. If it finds nothing,
+    # read the rendered plan instead, which works for any drawing.
+    if found.route == "vector" and not answers:
+        answers = read_printed_labels_raster(found, found.gray)
     # Tiny unnamed cells are nearly always furniture, so they are not worth AI calls.
     named_sizes = [s.area_px for s in found.segmentation.spaces if s.number in answers]
     typical = statistics.median(named_sizes) if named_sizes else 0
@@ -524,17 +648,23 @@ def analyze(
     naming_error = None
     if llm is None:
         if remaining:
-            naming_error = f"No LLM is configured, so {len(remaining)} unlabelled spaces could not be identified."
+            naming_error = f"No LLM was used, so {len(remaining)} unlabelled spaces could not be identified."
     elif remaining:
         untagged = {s.number for s in remaining}
         tagged = _context_view(found, path, page, only=untagged)[0]
-        found_answers, failed, total = name_with_vision(tagged, remaining, (ox, oy), llm)
+        step = f"Asking AI to name {len(remaining)} rooms"
+        on_step(step, "")
+        found_answers, failed, total = name_with_vision(
+            tagged, remaining, (ox, oy), llm, lambda done, views: on_step(step, f"{done} of {views} views")
+        )
         answers.update(found_answers)
         if failed:
             naming_error = f"The vision model failed on {failed} of {total} views, so some spaces stay unidentified."
 
+    on_step("Reading printed text", "")
     printed = _ocr_printed_text(clean)
 
+    on_step("Building the checklist", "")
     area_factor = None
     if mm_per_unit:
         unit_per_px = 1.0 / found.px_per_unit
@@ -593,8 +723,12 @@ def analyze(
     findings: list[Finding] = []
     deck = None
     if mm_per_unit and found.route == "vector":
-        deck = _to_deck(found, named, mm_per_unit, str(path), page, merged_into)
-        rules = [r for r in load_rules(BACKEND / "rules", "escape") if r.id not in RULES_NEEDING_INPUT]
+        if found.exploded:
+            _clean_exploded_names(named)
+            _mark_corridors(found, named, mm_per_unit)
+            named = named + _detected_stairs(found, named, mm_per_unit, labels, table)
+        deck = _to_deck(found, named, mm_per_unit, str(path), page, merged_into, relative_error)
+        rules = [r for r in load_rules(BACKEND / "rules", "escape", ship_type) if r.id not in RULES_NEEDING_INPUT]
         findings = run_checks(deck, rules)
 
     for space in named:
@@ -602,20 +736,100 @@ def analyze(
         door_ids = {d.id for d in deck.doors_of(subject)} if deck else set()
         space.checklist = checklist_for(space.category, table, findings, subject, door_ids)
 
-    scale_note = (
+    scale_note = scale_note_override or (
         f"Scale given: {mm_per_unit} mm per unit, not verified against a second dimension."
         if mm_per_unit
         else "No scale given, so nothing was measured. Provide a scale to measure."
     )
+    # Tag only the spaces listed for the engineer. Set-aside areas can run to hundreds of tags,
+    # which would bury the plan.
+    annotated = _context_view(found, path, page, only={s.number for s in named})[0]
     return Analysis(
         str(path), page, found.route, scale_note, llm.name if llm else None, naming_error,
-        named, not_rooms, view, found.region, found.px_per_unit, labels,
+        named, not_rooms, annotated, found.region, found.px_per_unit, labels, clean, (ox, oy),
+        ((found.region[0] - ox / found.px_per_unit), (found.region[1] - oy / found.px_per_unit)) if found.route == "vector" and found.region else (0.0, 0.0),
+        findings, mm_per_unit, ship_type, len(deck.doors) if deck else 0,
+        sum(1 for s in named if s.number > STAIR_NUMBERS),
     )
+
+
+def _outline_px(labels: np.ndarray, number: int, offset: tuple[int, int]) -> list[list[list[int]]]:
+    """A space's outlines on the plan image, simplified so the result stays small."""
+    contours, _ = cv2.findContours((labels == number).astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    outlines = []
+    for contour in contours:
+        points = cv2.approxPolyDP(contour, 1.5, True).reshape(-1, 2)
+        if len(points) >= 3:
+            outlines.append([[int(x) + offset[0], int(y) + offset[1]] for x, y in points])
+    return outlines
+
+
+def _checklist_json(checklist: list[ChecklistItem]) -> list[dict]:
+    return [
+        {
+            "ref": item.ref,
+            "what": item.what,
+            "reference_confirmed": item.confirmed_reference,
+            "status": item.status,
+            "verdict": item.finding.verdict.value if item.finding else None,
+            "measured": item.finding.why if item.finding else None,
+        }
+        for item in checklist
+    ]
+
+
+def space_types() -> list[str]:
+    """The types of space that have a regulation list."""
+    return sorted(load_applicability())
+
+
+def rename_space(space: dict, name: str, category: str | None) -> dict:
+    """An engineer's correction of a saved space. Type comes from the engineer, else the name.
+
+    The regulations are the fixed list for the type. If the type changes, the old list's
+    measurements no longer apply, so everything returns to be checked.
+    """
+    table = load_applicability()
+    keyword = classify_by_keyword(name)
+    new_category = category or (keyword[0].value if keyword else space["category"])
+    if new_category not in table:
+        raise ValueError(f"unknown type of space: {new_category}")
+    changed = new_category != space["category"]
+    return {
+        **space,
+        "name": name,
+        "category": new_category,
+        "confidence": 1.0,
+        "evidence": "engineer",
+        "reviewed": True,
+        "checklist": _checklist_json(checklist_for(Category(new_category), table, [], "", set()))
+        if changed
+        else space["checklist"],
+    }
+
+
+def _could_not_check(finding: Finding) -> bool:
+    """Keel lacked what it needed, such as doors. That is a gap to report, not a finding."""
+    if finding.verdict != Verdict.NEEDS_REVIEW or finding.measured_mm is not None:
+        return False
+    return finding.subject_id == "deck" or finding.why.startswith(COULD_NOT_CHECK)
 
 
 def analysis_json(result: Analysis) -> dict:
     """The full result for the API. Geometry evidence stays with each measured finding."""
+    ranked = sort_findings(result.findings)
     return {
+        "plan_size": [int(result.plan.shape[1]), int(result.plan.shape[0])],
+        "plan_scale": result.px_per_unit,
+        "plan_origin": list(result.plan_origin),
+        "mm_per_unit": result.mm_per_unit,
+        "ship_type": result.ship_type,
+        "doors_found": result.doors_found,
+        "stairs_found": result.stairs_found,
+        "findings": [
+            {**f.model_dump(mode="json"), "pin": f"F-{i:02d}", "could_not_check": _could_not_check(f)}
+            for i, f in enumerate(ranked, start=1)
+        ],
         "source": Path(result.source).name,
         "page": result.page,
         "route": result.route,
@@ -634,17 +848,9 @@ def analysis_json(result: Analysis) -> dict:
                 "name_on_drawing": s.name_on_drawing,
                 "area_m2": round(s.area_m2, 1) if s.area_m2 is not None else None,
                 "merged_from": s.merged_from,
-                "checklist": [
-                    {
-                        "ref": item.ref,
-                        "what": item.what,
-                        "reference_confirmed": item.confirmed_reference,
-                        "status": item.status,
-                        "verdict": item.finding.verdict.value if item.finding else None,
-                        "measured": item.finding.why if item.finding else None,
-                    }
-                    for item in s.checklist
-                ],
+                "reviewed": False,
+                "outline_px": _outline_px(result.labels, s.number, result.plan_offset),
+                "checklist": _checklist_json(s.checklist),
             }
             for s in sorted(result.spaces, key=lambda x: (x.name == "Unidentified space", x.category.value, x.name))
         ],

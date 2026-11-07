@@ -1,15 +1,17 @@
 import math
+import random
 
 import pytest
 
 from keel.doors import (
     chain_curves,
     circle_from_points,
+    dist,
     doors_from_arcs,
     find_door_arcs,
     fit_arc,
 )
-from keel.extract import Curve, Segment
+from keel.extract import Curve, Segment, bezier_to_points
 
 KAPPA = 0.5523
 
@@ -94,3 +96,45 @@ def test_arc_without_wall_is_unresolved_not_a_door():
     doors, unresolved = doors_from_arcs([arc], segments)
     assert doors == []
     assert unresolved == [arc]
+
+
+def _slow_chain_curves(curves, join_tol=0.05):
+    """The original search, kept to prove the faster one builds identical chains."""
+    remaining = list(curves)
+    chains = []
+    while remaining:
+        chain = bezier_to_points(remaining.pop())
+        extended = True
+        while extended:
+            extended = False
+            for i, c in enumerate(remaining):
+                pts = bezier_to_points(c)
+                if dist(chain[-1], pts[0]) < join_tol:
+                    chain = chain + pts[1:]
+                elif dist(chain[-1], pts[-1]) < join_tol:
+                    chain = chain + pts[-2::-1]
+                elif dist(chain[0], pts[-1]) < join_tol:
+                    chain = pts[:-1] + chain
+                elif dist(chain[0], pts[0]) < join_tol:
+                    chain = pts[:0:-1] + chain
+                else:
+                    continue
+                remaining.pop(i)
+                extended = True
+                break
+        chains.append(chain)
+    return chains
+
+
+@pytest.mark.parametrize("seed", range(20))
+def test_chain_curves_matches_the_original_search(seed):
+    """End points land on a small lattice with jitter around the join tolerance, so branches,
+    loops and near misses are all common."""
+    rng = random.Random(seed)
+    point = lambda: (rng.randrange(6) * 2 + rng.uniform(-0.03, 0.03), rng.randrange(6) * 2 + rng.uniform(-0.03, 0.03))
+    curves = [Curve(point(), point(), point(), point()) for _ in range(rng.randrange(60, 200))]
+    assert chain_curves(curves) == _slow_chain_curves(curves)
+
+
+def test_chain_curves_handles_no_curves():
+    assert chain_curves([]) == []

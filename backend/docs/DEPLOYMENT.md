@@ -12,8 +12,11 @@ python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 scripts/get_data.sh                       # downloads the public RCRV drawing
 .venv/bin/keel extract data/decks/rcrv_01_level.yaml --out data/processed/deck01.json
+npm --prefix ../frontend install && npm --prefix ../frontend run build
 .venv/bin/keel serve                      # http://127.0.0.1:8000
 ```
+
+`keel serve` hosts the built web app from `frontend/dist`.
 
 ## Option 2: Docker
 
@@ -44,7 +47,9 @@ The Gemini free tier allows 20 requests per model per day, and one `analyze` run
 Answers are cached in `data/processed/llm_cache`, so repeating a run costs nothing. Use a paid key
 for anything beyond light testing.
 
-Uploads are stored in `data/processed/analyses`, and are not deleted automatically.
+Uploads and their results are stored in `data/processed/analyses`, until deleted in the app.
+Engineers' decisions are in `data/processed/decisions.json`. Neither records who acted, because
+there is no login.
 
 For a local model:
 

@@ -215,9 +215,15 @@ def draw_numbers(gray: np.ndarray, seg: Segmentation, tint: float = 0.3, only: s
     image = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
     rng = np.random.default_rng(7)
     overlay = image.copy()
+    size = int(seg.labels.max()) + 1 if seg.labels.size else 1
+    palette = np.zeros((size, 3), dtype=np.uint8)
+    tinted = np.zeros(size, dtype=bool)
     for space in seg.spaces:
-        color = rng.integers(90, 240, 3).tolist()
-        overlay[seg.labels == space.number] = color
+        color = rng.integers(90, 240, 3)
+        if space.number < size:
+            palette[space.number], tinted[space.number] = color, True
+    mask = tinted[seg.labels]
+    overlay[mask] = palette[seg.labels[mask]]
     image = cv2.addWeighted(overlay, tint, image, 1 - tint, 0)
     scale = max(0.5, max(gray.shape) / 5000)
     for space in seg.spaces:

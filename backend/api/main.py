@@ -1,9 +1,16 @@
 """Thin web layer over the Keel library. No compliance logic lives here."""
 from __future__ import annotations
 
+import json
+import logging
 import os
 import re
+import shutil
+import tempfile
+import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 
@@ -13,9 +20,13 @@ import yaml
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response
 
-from keel.analyze import analysis_json, analyze
+from pydantic import BaseModel, Field
+
+from keel.analyze import analysis_json, analyze, rename_space, space_types
 from keel.checks import run_checks
+from keel.decisions import DecisionInput, add_decision, read_decisions
 from keel.evaluate import evaluate, load_cases
+from keel.extract import extract_page
 from keel.explain import add_explanations
 from keel.impact import cabin_impact, load_impact_map
 from keel.inject import apply_defect
@@ -23,7 +34,8 @@ from keel.llm import get_llm
 from keel.model import Deck
 from keel.pipeline import build_deck
 from keel.report import sort_findings
-from keel.rules import load_rules
+from keel.rules import SHIP_TYPES, load_rules
+from keel.sheet import DeckPlan, SheetScale, find_deck_plans, sheet_scale
 from keel.verdict import Verdict
 
 BACKEND = Path(__file__).resolve().parents[1]
@@ -32,7 +44,11 @@ DECK_JSON = Path(os.environ.get("KEEL_DECK_JSON", BACKEND / "data/processed/deck
 CASES = BACKEND / "data/decks/rcrv_01_level_eval.yaml"
 RULES = BACKEND / "rules"
 IMPACT_MAP = BACKEND / "config/impact_map.yaml"
-WEB = BACKEND / "web"
+# The built React app (frontend/). During development Vite serves it and proxies /api here.
+FRONTEND = Path(os.environ.get("KEEL_FRONTEND_DIST", BACKEND.parent / "frontend/dist"))
+DECISIONS = BACKEND / "data/processed/decisions.json"
+
+log = logging.getLogger(__name__)
 
 app = FastAPI(title="Keel", description="AI reads, code measures, engineer decides.")
 
@@ -66,59 +82,292 @@ def scenario_deck(name: str | None) -> Deck:
     raise HTTPException(404, f"unknown scenario {name!r}")
 
 
-@app.get("/")
-def index() -> FileResponse:
-    return FileResponse(WEB / "index.html")
-
-
-@app.get("/analyze")
-def analyze_page() -> FileResponse:
-    return FileResponse(WEB / "analyze.html")
-
-
 UPLOAD_TYPES = {".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"}
 MAX_UPLOAD_BYTES = 80 * 1024 * 1024
 RESULTS = BACKEND / "data/processed/analyses"
 
 
-@app.post("/api/analyze")
+# Analyses run one at a time: each uses a lot of CPU, and a second upload simply waits its turn.
+ANALYSIS_QUEUE = ThreadPoolExecutor(max_workers=1)
+JOBS: dict[str, dict] = {}
+
+
+def _read_scale(path: Path, page: int, plans: list[DeckPlan]) -> SheetScale | None:
+    """A sheet without a readable scale is normal, not an error."""
+    try:
+        with pymupdf.open(path) as document:
+            segments = extract_page(document[page]).segments
+        return sheet_scale(path, page, segments, plans)
+    except (RuntimeError, ValueError, IndexError) as error:
+        log.info("No scale read from %s: %s", path.name, error)
+        return None
+
+
+def run_analysis(
+    job: str,
+    path: Path,
+    page: int,
+    mm_per_unit: float | None,
+    use_ai: bool,
+    source: str,
+    ship_type: str = "passenger",
+    region: tuple | None = None,
+    plans: list | None = None,
+    upload_name: str | None = None,
+) -> None:
+    state = JOBS[job]
+
+    def on_step(step: str, detail: str) -> None:
+        if state["step"] and step != state["step"]:
+            state["completed"] = [*state["completed"], state["step"]]
+        state.update(step=step, detail=detail)
+
+    state.update(step="", completed=[])
+    try:
+        relative_error, note = 0.005, None
+        if mm_per_unit is None and path.suffix.lower() == ".pdf":
+            on_step("Reading the scale from the sheet", "")
+            found = _read_scale(path, page, plans or [])
+            if found is not None:
+                mm_per_unit, relative_error, note = found.mm_per_pt, found.relative_error, found.note
+        result = analyze(
+            path, get_llm() if use_ai else None, page, region, mm_per_unit, on_step=on_step,
+            ship_type=ship_type, relative_error=relative_error, scale_note_override=note,
+        )
+        folder = path.parent
+        cv2.imwrite(str(folder / "numbered.jpg"), result.annotated, [cv2.IMWRITE_JPEG_QUALITY, 88])
+        cv2.imwrite(str(folder / "plan.jpg"), result.plan, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        body = analysis_json(result)
+        for finding in body.get("findings", []):
+            finding["source_pdf"] = upload_name or source
+        body.update(
+            id=job,
+            source=source,
+            image=f"/api/analyze/{job}/numbered.jpg",
+            plan_image=f"/api/analyze/{job}/plan.jpg",
+            deck=state.get("deck"),
+            created_at=state["created_at"],
+        )
+        temporary = folder / "result.tmp"
+        temporary.write_text(json.dumps(body))
+        temporary.replace(folder / "result.json")
+        state["status"] = "done"
+    except (ValueError, IndexError) as error:
+        state.update(status="failed", error=f"Could not read this drawing: {error}")
+    except Exception:
+        log.exception("Analysis %s failed", job)
+        state.update(status="failed", error="The analysis failed unexpectedly. The server log has the details.")
+    if state["status"] == "failed":
+        shutil.rmtree(path.parent, ignore_errors=True)
+
+
+@app.post("/api/analyze", status_code=202)
 def analyze_upload(
     file: UploadFile = File(...),
     page: int = Form(0),
     mm_per_unit: float | None = Form(None),
     use_ai: bool = Form(True),
+    ship_type: str = Form("passenger"),
 ) -> dict:
-    """Analyse an uploaded drawing. The file is stored under a generated name."""
+    """Store an uploaded drawing under a generated name and queue it. Poll .../status for progress."""
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in UPLOAD_TYPES:
         raise HTTPException(400, f"Unsupported file type. Use one of: {sorted(UPLOAD_TYPES)}")
     data = file.file.read(MAX_UPLOAD_BYTES + 1)
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(413, "File is larger than 80 MB.")
-    job = uuid.uuid4().hex
+    if ship_type not in SHIP_TYPES:
+        raise HTTPException(422, f"Ship type must be one of: {list(SHIP_TYPES)}")
+    created = datetime.now(timezone.utc).isoformat()
+
+    def queue(deck: DeckPlan | None, plans: list[DeckPlan]) -> dict:
+        job = uuid.uuid4().hex
+        folder = RESULTS / job
+        folder.mkdir(parents=True)
+        path = folder / f"input{suffix}"
+        path.write_bytes(data)
+        name = f"{deck.name} · {file.filename}" if deck else file.filename
+        JOBS[job] = {
+            "id": job,
+            "status": "running",
+            "step": "Waiting for another drawing to finish",
+            "detail": "",
+            "completed": [],
+            "error": None,
+            "source": name,
+            "deck": deck.name if deck else None,
+            "page": page,
+            "created_at": created,
+        }
+        ANALYSIS_QUEUE.submit(
+            run_analysis, job, path, page, mm_per_unit, use_ai, name, ship_type, deck.region if deck else None, plans, file.filename
+        )
+        return JOBS[job]
+
+    plans = _plans_on_sheet(data, suffix, page)
+    jobs = [queue(plan, plans) for plan in plans] or [queue(None, [])]
+    return {**jobs[0], "jobs": [j["id"] for j in jobs]}
+
+
+def _plans_on_sheet(data: bytes, suffix: str, page: int) -> list[DeckPlan]:
+    """A sheet of several decks becomes one checked deck each. A single plan stays whole."""
+    if suffix != ".pdf":
+        return []
+    with tempfile.NamedTemporaryFile(suffix=suffix) as copy:
+        copy.write(data)
+        copy.flush()
+        try:
+            plans = find_deck_plans(copy.name, page)
+        except (ValueError, IndexError, RuntimeError):
+            return []
+    return plans if len(plans) >= 2 else []
+
+
+@app.get("/api/analyze/{job}/status")
+def analysis_status(job: str) -> dict:
+    if job in JOBS:
+        return JOBS[job]
+    if (job_folder(job) / "result.json").is_file():
+        return {"id": job, "status": "done"}
+    raise HTTPException(404, "This analysis did not finish, possibly because the server restarted.")
+
+
+def job_folder(job: str) -> Path:
+    if not re.fullmatch(r"[0-9a-f]{32}", job):
+        raise HTTPException(404)
     folder = RESULTS / job
-    folder.mkdir(parents=True)
-    path = folder / f"input{suffix}"
-    path.write_bytes(data)
-    try:
-        result = analyze(path, get_llm() if use_ai else None, page, None, mm_per_unit)
-    except (ValueError, IndexError) as error:
-        raise HTTPException(422, f"Could not read this drawing: {error}") from error
-    cv2.imwrite(str(folder / "numbered.jpg"), result.annotated, [cv2.IMWRITE_JPEG_QUALITY, 88])
-    body = analysis_json(result)
-    body["source"] = file.filename
-    body["image"] = f"/api/analyze/{job}/numbered.jpg"
-    return body
+    if not folder.is_dir():
+        raise HTTPException(404)
+    return folder
+
+
+@app.get("/api/analyses")
+def list_analyses() -> list[dict]:
+    """Running and saved analyses, newest first. An abandoned run has no result.json and is skipped."""
+    summaries = [
+        {**{k: job[k] for k in ("id", "source", "page", "created_at", "status")}, "identified": 0, "unidentified": 0}
+        for job in JOBS.values()
+        if job["status"] == "running"
+    ]
+    for path in RESULTS.glob("*/result.json") if RESULTS.is_dir() else []:
+        body = json.loads(path.read_text())
+        unidentified = sum(s["name"] == "Unidentified space" for s in body["spaces"])
+        summaries.append(
+            {
+                "id": body["id"],
+                "source": body["source"],
+                "page": body["page"],
+                "created_at": body["created_at"],
+                "status": "done",
+                "identified": len(body["spaces"]) - unidentified,
+                "unidentified": unidentified,
+            }
+        )
+    return sorted(summaries, key=lambda s: s["created_at"], reverse=True)
+
+
+@app.get("/api/analyze/{job}")
+def get_analysis(job: str) -> dict:
+    path = job_folder(job) / "result.json"
+    if not path.is_file():
+        raise HTTPException(404)
+    return json.loads(path.read_text())
+
+
+@app.delete("/api/analyze/{job}", status_code=204)
+def delete_analysis(job: str) -> None:
+    folder = job_folder(job)
+    if JOBS.get(job, {}).get("status") == "running":
+        raise HTTPException(409, "This analysis is still running.")
+    JOBS.pop(job, None)
+    shutil.rmtree(folder)
 
 
 @app.get("/api/analyze/{job}/numbered.jpg")
 def analyze_image(job: str) -> FileResponse:
-    if not re.fullmatch(r"[0-9a-f]{32}", job):
-        raise HTTPException(404)
-    path = RESULTS / job / "numbered.jpg"
+    path = job_folder(job) / "numbered.jpg"
     if not path.is_file():
         raise HTTPException(404)
     return FileResponse(path, media_type="image/jpeg")
+
+
+@app.get("/api/analyze/{job}/plan.jpg")
+def analyze_plan(job: str) -> FileResponse:
+    path = job_folder(job) / "plan.jpg"
+    if not path.is_file():
+        raise HTTPException(404)
+    return FileResponse(path, media_type="image/jpeg")
+
+
+class SpaceCorrection(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    category: str | None = None
+
+
+_saved_result_lock = threading.Lock()
+
+
+@app.patch("/api/analyze/{job}/spaces/{number}")
+def correct_space(job: str, number: int, correction: SpaceCorrection) -> dict:
+    """An engineer names a space or confirms its name. Returns the whole updated result."""
+    name = correction.name.strip()
+    if not name:
+        raise HTTPException(422, "A space needs a name.")
+    path = job_folder(job) / "result.json"
+    with _saved_result_lock:
+        if not path.is_file():
+            raise HTTPException(404)
+        body = json.loads(path.read_text())
+        index = next((i for i, s in enumerate(body["spaces"]) if s["number"] == number), None)
+        if index is None:
+            raise HTTPException(404, f"No space number {number} in this drawing.")
+        old = body["spaces"][index]
+        try:
+            body["spaces"][index] = rename_space(old, name, correction.category)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(body))
+        temporary.replace(path)
+    new = body["spaces"][index]
+    add_decision(
+        DECISIONS,
+        DecisionInput(
+            finding=f"{job}:{number}",
+            rule_id=body["source"][:100],
+            subject=new["name"],
+            decision="renamed",
+            note=f'Was "{old["name"]}" ({old["category"]}), now "{new["name"]}" ({new["category"]})',
+        ),
+    )
+    return body
+
+
+@app.get("/api/rules/{ship_type}")
+def rules_for_ship(ship_type: str) -> list[dict]:
+    if ship_type not in SHIP_TYPES:
+        raise HTTPException(404)
+    return [rule.model_dump() for rule in load_rules(RULES, ship_type=ship_type)]
+
+
+@app.get("/api/space-types")
+def list_space_types() -> list[str]:
+    return space_types()
+
+
+@app.get("/api/rules")
+def rules() -> list[dict]:
+    return [rule.model_dump() for rule in load_rules(RULES)]
+
+
+@app.get("/api/decisions")
+def decisions() -> list[dict]:
+    return [d.model_dump() for d in read_decisions(DECISIONS)]
+
+
+@app.post("/api/decisions", status_code=201)
+def record_decision(entry: DecisionInput) -> dict:
+    return add_decision(DECISIONS, entry).model_dump()
 
 
 @app.get("/api/meta")
@@ -220,3 +469,21 @@ def impact(count: int = Query(6, ge=1, le=200), berths_each: int = Query(2, ge=1
         "rules_that_apply": result.rules_that_apply,
         "notify": result.notify,
     }
+
+
+# Registered last, so every /api route above wins. Anything else is a file of the React app,
+# or one of its client-side routes, which the app itself resolves from index.html.
+@app.get("/{path:path}", include_in_schema=False)
+def frontend(path: str) -> FileResponse:
+    root = FRONTEND.resolve()
+    target = (root / path).resolve()
+    if path.startswith("api/"):
+        raise HTTPException(404)
+    if not (root / "index.html").is_file():
+        raise HTTPException(404, "The web app is not built. Run: npm --prefix frontend run build")
+    if target.is_file() and target.is_relative_to(root):
+        return FileResponse(target)
+    # A missing asset is an error. Only page URLs fall through to the app.
+    if path.startswith("assets/"):
+        raise HTTPException(404)
+    return FileResponse(root / "index.html")

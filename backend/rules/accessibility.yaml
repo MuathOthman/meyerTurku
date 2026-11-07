@@ -17,7 +17,10 @@
   interpretation_note: >-
     Measured between the door face and the stop with the door open 90 degrees. The drawing
     does not show that directly, so it is estimated from leaf width minus a frame allowance.
-
+  why_it_matters: >-
+    A wheelchair user needs this clear width to get through a door at all. Below it, the room is out of reach.
+  fix: >-
+    Fit a wider door or offset hinges to add {shortfall} mm of clear opening, reaching {required} mm.
 - id: ACC-ROUTE-WIDTH
   title: Clear width of walking surfaces on accessible routes
   source: "ADA 2010 Standards 403.5.1"
@@ -33,7 +36,10 @@
   interpretation_note: >-
     A reduction to 815 mm is allowed for up to 610 mm of length, under conditions. Keel
     does not apply that exception automatically, so such a case goes to review.
-
+  why_it_matters: >-
+    One narrow point stops a wheelchair user even if the rest of the route is wide enough.
+  fix: >-
+    Widen the route by {shortfall} mm to reach {required} mm, or check whether the short-length exception applies.
 - id: ACC-TURNING
   title: Turning space in accessible rooms
   source: "ADA 2010 Standards 304.3.1"
@@ -49,3 +55,7 @@
   interpretation_note: >-
     A 60 in circle. A T-shaped space (304.3.2) is an alternative that Keel does not test,
     and knee and toe clearance may count, so a shortfall here goes to review.
+  why_it_matters: >-
+    A wheelchair user must be able to turn around, or they cannot leave the room facing forward.
+  fix: >-
+    Move furniture or enlarge the room to clear a {required} mm circle, or show that a T-shaped turning space fits.

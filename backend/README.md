@@ -19,8 +19,10 @@ scripts/get_data.sh
 .venv/bin/keel extract data/decks/rcrv_01_level.yaml --out data/processed/deck01.json
 .venv/bin/keel check data/processed/deck01.json
 .venv/bin/keel eval data/processed/deck01.json --defects data/decks/rcrv_01_level_eval.yaml
-.venv/bin/keel serve        # web viewer on http://127.0.0.1:8000
+.venv/bin/keel serve        # API and web app on http://127.0.0.1:8000
 ```
+
+The web app lives in `../frontend`. See the [root README](../README.md) to run both together.
 
 Inject a defect and check again:
 
@@ -41,15 +43,19 @@ See what adding cabins changes:
 |---|---|
 | Scale check: beam measured against printed | 12,500 mm against 12,497 mm (0.024%) |
 | Extracted | 45 spaces, 42 doors, 6 door arcs left for review |
-| Original drawing | 0 FAIL, 1 NEEDS_REVIEW, 13 PASS |
+| Original drawing | 0 FAIL, 2 NEEDS_REVIEW, 14 PASS |
 | Injected defects found | 11 of 11 |
 | False alarms | 0, on the baseline and 8 controls |
 | Injected widths measured back | Within about 1 mm |
-| Tests | 107 passing |
+| Tests | 170 backend and 14 frontend, passing |
 
-**The one NEEDS_REVIEW is a real observation.** The side branch to the Hospital and a crew cabin is
+**The first NEEDS_REVIEW is a real observation.** The side branch to the Hospital and a crew cabin is
 846 mm wide at the gap beside the centerboard trunk, against an assumed 900 mm. The main route between
 exits is 1,049 mm at its narrowest. Whether the rule applies to that branch is an engineer's call.
+
+**The second NEEDS_REVIEW** is the DNV lobby rule. The passageway between the Laundry and the stair
+is large enough, at 1,049 mm and 23.8 m², but Keel cannot see the fire hose station the rule also
+requires, or tell whether this corridor counts as the lobby.
 
 ### What these numbers do and do not prove
 
@@ -61,7 +67,7 @@ exits is 1,049 mm at its narrowest. Whether the rule applies to that branch is a
   accuracy yet, and other decks have not been tried.
 - Labels used in these checks are hand-read from the drawing, standing in for an engineer's
   confirmation. See "Accuracy on unreviewed drawings" below for how well Keel names rooms alone.
-- Four rule values are assumed or unsourced. See [docs/RULES.md](docs/RULES.md).
+- Three rule values are assumed or unsourced. See [docs/RULES.md](docs/RULES.md).
 
 ### Ruler check
 
@@ -85,7 +91,7 @@ reads about 25 mm more.
 .venv/bin/keel analyze scan.png --no-ai
 ```
 
-Or use the upload page at `/analyze` in the web viewer.
+Or use the upload page at `/app/new` in the web app.
 
 1. **Find spaces, deterministic.** Vector PDFs use the drawn walls, with wall line weights detected
    automatically. Images use pixel segmentation, which is much less accurate.

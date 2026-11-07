@@ -11,6 +11,9 @@ removed first because they cross or block floor that is really open.
 """
 from __future__ import annotations
 
+import cv2
+import numpy as np
+
 from dataclasses import dataclass
 
 from shapely import STRtree
@@ -204,6 +207,42 @@ def build_wall_lines(
             # Direction unknown: close both candidates so rooms cannot leak into each other.
             lines.extend(door_closure_lines(door.hinge, door.leaf_tip))
     return lines
+
+
+def free_cells_on_grid(region: Region, wall_lines: list[LineString], px_per_pt: float = 4.0) -> list[Polygon]:
+    """The same result for very detailed drawings, by drawing the walls on a grid.
+
+    Exact geometry takes many minutes above tens of thousands of lines. A quarter point is
+    well inside the measuring tolerance, which is added for this reason.
+    """
+    width = int((region[2] - region[0]) * px_per_pt) + 1
+    height = int((region[3] - region[1]) * px_per_pt) + 1
+    ink = np.zeros((height, width), np.uint8)
+    for line in wall_lines:
+        points = ((np.asarray(line.coords) - (region[0], region[1])) * px_per_pt).round().astype(np.int32)
+        cv2.polylines(ink, [points], False, 1, 2)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(1 - ink, connectivity=4)
+    cells = []
+    for number in range(1, count):
+        x, y, w, h, area = stats[number]
+        if area < 16:
+            continue
+        mask = (labels[y : y + h, x : x + w] == number).astype(np.uint8)
+        contours, hierarchy = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+        to_pt = lambda c: [((px + x) / px_per_pt + region[0], (py + y) / px_per_pt + region[1]) for px, py in c.reshape(-1, 2)]
+        for index, contour in enumerate(contours):
+            if hierarchy[0][index][3] != -1 or len(contour) < 3:
+                continue
+            holes = [
+                to_pt(inner)
+                for j, inner in enumerate(contours)
+                if hierarchy[0][j][3] == index and len(inner) >= 3
+            ]
+            polygon = Polygon(to_pt(contour), holes)
+            if not polygon.is_valid:
+                polygon = polygon.buffer(0)
+            cells.extend(p for p in getattr(polygon, "geoms", [polygon]) if p.geom_type == "Polygon" and not p.is_empty)
+    return cells
 
 
 def free_cells(region: Region, wall_lines: list[LineString], half_stroke: float = 0.18) -> list[Polygon]:

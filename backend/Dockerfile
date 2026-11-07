@@ -1,3 +1,11 @@
+# Build context is the repo root: see docker-compose.yml.
+FROM node:24-slim AS frontend
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY frontend/ ./
+RUN npm run build
+
 FROM python:3.12-slim
 
 # OpenCV, used by the OCR engine, needs these system libraries.
@@ -5,14 +13,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY pyproject.toml ./
-COPY keel ./keel
-COPY api ./api
-COPY web ./web
-COPY rules ./rules
-COPY config ./config
-COPY scripts ./scripts
-COPY data/decks ./data/decks
+COPY backend/pyproject.toml ./
+COPY backend/keel ./keel
+COPY backend/api ./api
+COPY backend/rules ./rules
+COPY backend/config ./config
+COPY backend/scripts ./scripts
+COPY backend/data/decks ./data/decks
+COPY --from=frontend /frontend/dist ./frontend/dist
+ENV KEEL_FRONTEND_DIST=/app/frontend/dist
 RUN pip install --no-cache-dir .
 
 EXPOSE 8000

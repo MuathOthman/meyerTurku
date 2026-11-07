@@ -263,3 +263,88 @@ def test_review_text_states_the_real_reason():
     uncertain = numeric_why(Verdict.NEEDS_REVIEW, "Width", 846, 900, 25, ">=")
     assert "misses by 54 mm" in uncertain
     assert "within the" not in uncertain
+
+
+def class_findings(deck, rule_id):
+    rule = next(r for r in RULES if r.id == rule_id)
+    return run_checks(deck, [rule])
+
+
+def with_galley(deck, door_to="C", name="GALLEY", category=Category.GALLEY):
+    y = deck.space("C").polygon().bounds[3]
+    deck.spaces.append(rect_space("G", name, category, (6000, y, 9000, y + 3000)))
+    deck.doors.append(
+        Door(id="D-G", hinge_mm=(7000, y), latch_mm=(7800, y), leaf_tip_mm=(7000, y + 800),
+             arc_mid_mm=(7570, y + 570), leaf_width_mm=800, space_a=door_to, space_b="G", swings_into="G")
+    )
+    return deck
+
+
+def test_sole_stair_passes_when_clearly_wide_enough():
+    finding = class_findings(make_deck(stair_width=1000.0), "CLASS-DNV-SOLE-STAIR")[0]
+    assert finding.verdict == Verdict.PASS
+
+
+def test_sole_stair_shortfall_goes_to_review_because_dispensation_is_unknown():
+    finding = class_findings(make_deck(stair_width=700.0), "CLASS-DNV-SOLE-STAIR")[0]
+    assert finding.verdict == Verdict.NEEDS_REVIEW
+    assert finding.source.startswith("DNV")
+
+
+def test_deck_without_galley_or_laundry_has_nothing_to_check():
+    assert class_findings(make_deck(), "CLASS-DNV-GALLEY-LOBBY") == []
+
+
+def test_lobby_of_enough_size_still_goes_to_review_for_the_fire_hose_station():
+    finding = class_findings(with_galley(make_deck()), "CLASS-DNV-GALLEY-LOBBY")[0]
+    assert finding.verdict == Verdict.NEEDS_REVIEW
+    assert "12.0 m2" in finding.why and "fire hose station" in finding.why
+
+
+def test_narrow_lobby_goes_to_review_never_fail():
+    finding = class_findings(with_galley(make_deck(corridor_width=800.0)), "CLASS-DNV-GALLEY-LOBBY")[0]
+    assert finding.verdict == Verdict.NEEDS_REVIEW
+
+
+def test_small_lobby_goes_to_review_even_when_wide_enough():
+    deck = with_galley(make_deck())
+    corridor = deck.space("C")
+    corridor.exterior_mm = list(box(6000, 0, 10000, 1000).exterior.coords)
+    deck.space("G").exterior_mm = list(box(6000, 1000, 9000, 4000).exterior.coords)
+    door = next(d for d in deck.doors if d.id == "D-G")
+    door.hinge_mm, door.latch_mm = (7000, 1000), (7800, 1000)
+    finding = class_findings(deck, "CLASS-DNV-GALLEY-LOBBY")[0]
+    assert corridor.area_m2 < 4.5 and finding.verdict == Verdict.NEEDS_REVIEW
+    assert "size is enough" not in finding.why
+
+
+def test_laundry_counts_by_name():
+    deck = with_galley(make_deck(), name="MAIN LAUNDRY", category=Category.SERVICE)
+    assert len(class_findings(deck, "CLASS-DNV-GALLEY-LOBBY")) == 1
+
+
+def test_galley_opening_directly_onto_a_stair_is_flagged():
+    finding = class_findings(with_galley(make_deck(), door_to="S"), "CLASS-DNV-GALLEY-LOBBY")[0]
+    assert finding.verdict == Verdict.NEEDS_REVIEW
+    assert "directly onto a stair" in finding.why
+
+
+def test_corridor_found_from_shape_measures_along_its_length_not_into_recesses():
+    deck = make_deck(corridor_width=1200.0)
+    corridor = deck.space("C")
+    corridor.label_source = "shape"
+    corridor.classification_confidence = 0.7
+    # A narrow door recess at one end. The corridor itself stays 1200 mm.
+    outline = box(0, 0, 10000, 1200).union(box(10000, 500, 10600, 800))
+    corridor.exterior_mm = list(outline.exterior.coords)
+    finding = class_findings(deck, "ESC-CORRIDOR-WIDTH")[0]
+    assert abs(finding.measured_mm - 1200) < 10
+
+
+def test_corridor_found_from_shape_can_only_reach_review():
+    deck = make_deck(corridor_width=600.0)
+    corridor = deck.space("C")
+    corridor.label_source = "shape"
+    corridor.classification_confidence = 0.7
+    finding = class_findings(deck, "ESC-CORRIDOR-WIDTH")[0]
+    assert finding.verdict == Verdict.NEEDS_REVIEW and finding.fix

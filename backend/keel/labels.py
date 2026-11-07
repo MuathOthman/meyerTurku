@@ -241,8 +241,50 @@ def group_blocks(
     return blocks
 
 
+class SegmentIndex:
+    """Quickly narrows the lines worth looking at. Every result stays in input order, and the
+    exact checks still run on what it returns, so it only saves time. Its limits are slightly
+    loose so rounding can never drop a line the exact check would keep.
+    """
+
+    SLACK = 1e-6
+
+    def __init__(self, segments: list[Segment]):
+        self.segments = segments
+        data = np.array([(s.x0, s.y0, s.x1, s.y1, s.width) for s in segments], dtype=float).reshape(-1, 5)
+        self.x0, self.y0, self.x1, self.y1, self.width = data.T
+        self.length = np.hypot(self.x1 - self.x0, self.y1 - self.y0)
+
+    def _pick(self, mask: np.ndarray) -> list[Segment]:
+        return [self.segments[int(i)] for i in np.flatnonzero(mask)]
+
+    def _near(self, point: Point, radius: float) -> np.ndarray:
+        limit = radius + self.SLACK
+        return (np.hypot(self.x0 - point[0], self.y0 - point[1]) <= limit) | (
+            np.hypot(self.x1 - point[0], self.y1 - point[1]) <= limit
+        )
+
+    def _same_weight(self, width: float) -> np.ndarray:
+        return np.abs(self.width - width) <= 0.005 + self.SLACK
+
+    def touching(self, point: Point, radius: float) -> list[Segment]:
+        return self._pick(self._near(point, radius))
+
+    def same_weight_longer_than(self, width: float, length: float) -> list[Segment]:
+        return self._pick(self._same_weight(width) & (self.length > length - self.SLACK))
+
+    def along_line(self, width: float, origin: Point, ux: float, uy: float, tol: float) -> list[Segment]:
+        limit = tol + self.SLACK
+        offset0 = np.abs((self.x0 - origin[0]) * uy - (self.y0 - origin[1]) * ux)
+        offset1 = np.abs((self.x1 - origin[0]) * uy - (self.y1 - origin[1]) * ux)
+        return self._pick(self._same_weight(width) & (offset0 <= limit) & (offset1 <= limit))
+
+    def elbows_at(self, width: float, tip: Point, radius: float) -> list[Segment]:
+        return self._pick(self._same_weight(width) & self._near(tip, radius))
+
+
 def _refine_through_dot(
-    near: Point, ux: float, uy: float, first: Segment, dot: LeaderDot, segments: list[Segment]
+    near: Point, ux: float, uy: float, first: Segment, dot: LeaderDot, index: SegmentIndex
 ) -> tuple[Point, float, float]:
     """The piece at a dot is often under 2 pt, too short to give an accurate direction.
 
@@ -250,7 +292,7 @@ def _refine_through_dot(
     that does, on the same side and in roughly the same direction.
     """
     best, best_length = None, 3.0
-    for s in segments:
+    for s in index.same_weight_longer_than(first.width, best_length):
         if abs(s.width - first.width) > 0.005 or s.length <= best_length:
             continue
         a, b = (s.x0, s.y0), (s.x1, s.y1)
@@ -270,7 +312,7 @@ def _refine_through_dot(
 def _follow_leader(
     first: Segment,
     dot: LeaderDot,
-    segments: list[Segment],
+    index: SegmentIndex,
     line_tol: float,
     max_gap: float,
     strokes: set[Segment] | None = None,
@@ -289,11 +331,11 @@ def _follow_leader(
         return []
     ux, uy = (far[0] - near[0]) / span, (far[1] - near[1]) / span
     if span < 4.0:
-        near, ux, uy = _refine_through_dot(near, ux, uy, first, dot, segments)
+        near, ux, uy = _refine_through_dot(near, ux, uy, first, dot, index)
         span = dist(near, far) if near != dot.point else 0.0
 
     pieces = []
-    for s in segments:
+    for s in index.along_line(first.width, near, ux, uy, line_tol):
         if s.length < 0.2 or abs(s.width - first.width) > 0.005:
             continue
         offsets = []
@@ -318,7 +360,7 @@ def _follow_leader(
     ends: list[Point] = []
     for stop in reversed(stops):
         tip = (near[0] + ux * stop, near[1] + uy * stop)
-        for s in segments:
+        for s in index.elbows_at(first.width, tip, 0.6):
             a, b = (s.x0, s.y0), (s.x1, s.y1)
             if 1.0 <= s.length <= 14.0 and abs(s.width - first.width) <= 0.005:
                 # Only a real turn counts as an elbow, not the next piece of the same line.
@@ -343,11 +385,13 @@ def trace_leader_tails(
     line_tol: float = 0.5,
     max_gap: float = 30.0,
     strokes: set[Segment] | None = None,
+    index: SegmentIndex | None = None,
 ) -> list[list[Point]]:
     """One list of possible far ends for each line that really starts at this dot."""
+    index = index or SegmentIndex(segments)
     tol = dot.radius + margin
     tails = []
-    for s in segments:
+    for s in index.touching(dot.point, tol):
         if s.length < 0.7:
             continue
         a, b = (s.x0, s.y0), (s.x1, s.y1)
@@ -355,16 +399,21 @@ def trace_leader_tails(
         far = max(dist(a, dot.point), dist(b, dot.point))
         # The line must run away from the dot, not pass by it.
         if near <= tol and far > near + 0.5:
-            tails.append(_follow_leader(s, dot, segments, line_tol, max_gap, strokes))
+            tails.append(_follow_leader(s, dot, index, line_tol, max_gap, strokes))
     return tails
+
+
+def trace_all_leaders(dots: list[LeaderDot], segments: list[Segment]) -> tuple[list[list[list[Point]]], set[Segment]]:
+    """Every dot's possible far ends, and the short elbows joining leaders to their text."""
+    index = SegmentIndex(segments)
+    strokes: set[Segment] = set()
+    traces = [trace_leader_tails(dot, segments, strokes=strokes, index=index) for dot in dots]
+    return traces, strokes
 
 
 def leader_tail_strokes(dots: list[LeaderDot], segments: list[Segment]) -> set[Segment]:
     """The short elbows joining leaders to their text."""
-    strokes: set[Segment] = set()
-    for dot in dots:
-        trace_leader_tails(dot, segments, strokes=strokes)
-    return strokes
+    return trace_all_leaders(dots, segments)[1]
 
 
 def block_has_leader(
@@ -404,15 +453,18 @@ def place_labels(
     dots: list[LeaderDot],
     segments: list[Segment],
     max_tail_distance: float = 10.0,
+    traces: list[list[list[Point]]] | None = None,
 ) -> list[PlacedLabel]:
     """Pair dots with text blocks, closest first. Unclaimed blocks count as in-room labels.
 
     Each leader offers its far ends, furthest first. A leader ends at its text, so the first
     end that reaches a block decides, and text it merely passes on the way is ignored.
     """
+    if traces is None:
+        traces = trace_all_leaders(dots, segments)[0]
     candidates = []
     for dot_index, dot in enumerate(dots):
-        for ends in trace_leader_tails(dot, segments):
+        for ends in traces[dot_index]:
             for rank, end in enumerate(ends):
                 gaps = [(_gap_to_block(end, block), block_index) for block_index, block in enumerate(blocks)]
                 near = [g for g in gaps if g[0] < max_tail_distance]

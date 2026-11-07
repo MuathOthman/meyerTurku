@@ -53,7 +53,17 @@ def base_finding(
     overlay_lines_pt: list[list[tuple[float, float]]] | None = None,
 ) -> Finding:
     has_numbers = measured_mm is not None and required_mm is not None and rule.operator
+    margin = margin_mm(measured_mm, required_mm, rule.operator) if has_numbers else None
+    # Advice only where it applies: a shortfall with numbers, or a yes/no rule with no numbers in its text.
+    fix = ""
+    if verdict != Verdict.PASS and subject_id != "deck":
+        if margin is not None:
+            fix = rule.fix.format(shortfall=f"{abs(margin):.0f}", required=f"{required_mm:.0f}")
+        elif "{" not in rule.fix:
+            fix = rule.fix
     return Finding(
+        why_it_matters=rule.why_it_matters,
+        fix=fix,
         rule_id=rule.id,
         rule_title=rule.title,
         source=rule.source,
@@ -72,7 +82,7 @@ def base_finding(
         required_display=display(required_mm) if required_mm is not None else "",
         operator=rule.operator or "",
         tolerance_mm=tolerance_mm,
-        margin_mm=margin_mm(measured_mm, required_mm, rule.operator) if has_numbers else None,
+        margin_mm=margin,
         why=why,
         interpretation_note=rule.interpretation_note,
         assumptions=assumptions or [],

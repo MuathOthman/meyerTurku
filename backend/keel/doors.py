@@ -11,6 +11,7 @@ Hinge to latch is the door opening. The arc lies on the side the door swings tow
 from __future__ import annotations
 
 import math
+from collections import defaultdict
 from dataclasses import dataclass
 
 from keel.extract import Curve, Point, Segment, bezier_to_points
@@ -53,29 +54,52 @@ def circle_from_points(a: Point, b: Point, c: Point) -> tuple[Point, float] | No
 
 
 def chain_curves(curves: list[Curve], join_tol: float = 0.05) -> list[list[Point]]:
-    """Join Bezier pieces whose end points touch into ordered polylines."""
-    remaining = list(curves)
+    """Join Bezier pieces whose end points touch into ordered polylines.
+
+    A chain takes the first unused piece, in input order, that touches either of its ends.
+    A grid of end points finds that piece without comparing against every curve.
+    """
+    points = [bezier_to_points(c) for c in curves]
+    grid: dict[tuple[int, int], list[int]] = defaultdict(list)
+    cell = lambda p: (math.floor(p[0] / join_tol), math.floor(p[1] / join_tol))
+    for index, pts in enumerate(points):
+        grid[cell(pts[0])].append(index)
+        if cell(pts[-1]) != cell(pts[0]):
+            grid[cell(pts[-1])].append(index)
+
+    used = [False] * len(points)
+
+    def first_touching(*ends: Point) -> int | None:
+        best = None
+        for end in ends:
+            cx, cy = cell(end)
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    for index in grid.get((cx + dx, cy + dy), ()):
+                        if used[index] or (best is not None and index >= best):
+                            continue
+                        pts = points[index]
+                        if dist(end, pts[0]) < join_tol or dist(end, pts[-1]) < join_tol:
+                            best = index
+        return best
+
     chains: list[list[Point]] = []
-    while remaining:
-        chain = bezier_to_points(remaining.pop())
-        extended = True
-        while extended:
-            extended = False
-            for i, c in enumerate(remaining):
-                pts = bezier_to_points(c)
-                if dist(chain[-1], pts[0]) < join_tol:
-                    chain = chain + pts[1:]
-                elif dist(chain[-1], pts[-1]) < join_tol:
-                    chain = chain + pts[-2::-1]
-                elif dist(chain[0], pts[-1]) < join_tol:
-                    chain = pts[:-1] + chain
-                elif dist(chain[0], pts[0]) < join_tol:
-                    chain = pts[:0:-1] + chain
-                else:
-                    continue
-                remaining.pop(i)
-                extended = True
-                break
+    for start in range(len(points) - 1, -1, -1):
+        if used[start]:
+            continue
+        used[start] = True
+        chain = points[start]
+        while (index := first_touching(chain[-1], chain[0])) is not None:
+            pts = points[index]
+            used[index] = True
+            if dist(chain[-1], pts[0]) < join_tol:
+                chain = chain + pts[1:]
+            elif dist(chain[-1], pts[-1]) < join_tol:
+                chain = chain + pts[-2::-1]
+            elif dist(chain[0], pts[-1]) < join_tol:
+                chain = pts[:-1] + chain
+            else:
+                chain = pts[:0:-1] + chain
         chains.append(chain)
     return chains
 
@@ -119,6 +143,64 @@ def find_door_arcs(
         ):
             arcs.append(arc)
     return arcs
+
+
+def find_polyline_door_arcs(
+    segments: list[Segment],
+    min_radius_pt: float,
+    max_radius_pt: float,
+    sweep_range_deg: tuple[float, float] = (45.0, 110.0),
+    join_tol: float = 0.02,
+    max_piece_pt: float = 6.0,
+) -> tuple[list[Arc], set[Segment]]:
+    """Some CAD exports draw arcs as many tiny straight lines. Join them, then fit a circle."""
+    pieces = [s for s in segments if s.length < max_piece_pt]
+    grid: dict[tuple[int, int], list[int]] = defaultdict(list)
+    cell = lambda p: (round(p[0] / join_tol), round(p[1] / join_tol))
+    for index, s in enumerate(pieces):
+        grid[cell((s.x0, s.y0))].append(index)
+        grid[cell((s.x1, s.y1))].append(index)
+    used = [False] * len(pieces)
+
+    def next_piece(point: Point) -> tuple[int, Point] | None:
+        cx, cy = cell(point)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for index in grid.get((cx + dx, cy + dy), ()):
+                    if used[index]:
+                        continue
+                    s = pieces[index]
+                    if dist((s.x0, s.y0), point) < join_tol:
+                        return index, (s.x1, s.y1)
+                    if dist((s.x1, s.y1), point) < join_tol:
+                        return index, (s.x0, s.y0)
+        return None
+
+    arcs, members = [], set()
+    for index, s in enumerate(pieces):
+        if used[index]:
+            continue
+        used[index] = True
+        chain, chosen = [(s.x0, s.y0), (s.x1, s.y1)], [s]
+        for forward in (True, False):
+            while (found := next_piece(chain[-1] if forward else chain[0])) is not None:
+                used[found[0]] = True
+                chosen.append(pieces[found[0]])
+                if forward:
+                    chain.append(found[1])
+                else:
+                    chain.insert(0, found[1])
+        if len(chain) < 4:
+            continue
+        arc = fit_arc(chain)
+        if (
+            arc is not None
+            and min_radius_pt <= arc.radius <= max_radius_pt
+            and sweep_range_deg[0] <= arc.sweep_deg <= sweep_range_deg[1]
+        ):
+            arcs.append(arc)
+            members.update(chosen)
+    return arcs, members
 
 
 def _radial_angles(

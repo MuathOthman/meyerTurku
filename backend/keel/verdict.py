@@ -87,3 +87,5 @@ class Finding(BaseModel):
     overlay_lines_pt: list[list[tuple[float, float]]] = Field(default_factory=list)
     overlay_polygon_pt: list[tuple[float, float]] = Field(default_factory=list)
     explanation: str | None = None
+    why_it_matters: str = ""
+    fix: str = ""

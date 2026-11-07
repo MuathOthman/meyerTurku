@@ -10,10 +10,11 @@ import numpy as np
 import pymupdf
 from shapely.geometry import Polygon
 
-from keel.doors import DetectedDoor, doors_from_arcs, find_door_arcs
+from keel.calibrate import CalibrationError, detect_frame_ruler
+from keel.doors import DetectedDoor, doors_from_arcs, find_door_arcs, find_polyline_door_arcs
 from keel.extract import Primitives, Segment, extract_page
 from keel.raster import RasterSpace, Segmentation, load_gray, segment
-from keel.rooms import build_wall_lines, detect_leader_dots, find_leader_lines, free_cells
+from keel.rooms import build_wall_lines, detect_leader_dots, find_leader_lines, free_cells, free_cells_on_grid
 
 # A vector page has far more drawn items than a scanned page, which has almost none.
 MIN_VECTOR_ITEMS = 1000
@@ -31,6 +32,7 @@ class FoundSpaces:
     cells_pt: dict[int, Polygon]  # vector route only, by space number
     primitives: Primitives | None = None
     dots: list | None = None
+    exploded: bool = False  # Curves were exported as tiny lines, so doors need the slower route.
 
 
 def detect_wall_widths(segments: list[Segment], min_width: float = 0.2, min_share: float = 0.01) -> tuple[float, ...]:
@@ -57,6 +59,20 @@ def _in_region(point, region) -> bool:
     return region[0] <= point[0] <= region[2] and region[1] <= point[1] <= region[3]
 
 
+EXPLODED_MIN_SEGMENTS = 3000
+EXPLODED_MAX_ARCS = 8
+
+
+def _centreline_pieces(segments: list[Segment]) -> set[Segment]:
+    """The ship's centreline and frame ticks are drawn in wall weight here, but are not walls."""
+    try:
+        ruler = detect_frame_ruler(segments, min_ticks=12)
+    except CalibrationError:
+        return set()
+    y = ruler.centerline_y
+    return {s for s in segments if (abs(s.y0 - y) < 0.6 and abs(s.y1 - y) < 0.6) or (s.length < 14 and abs(s.x0 - s.x1) < 0.01 and abs(s.midpoint[1] - y) < 8)}
+
+
 def vector_spaces(
     path: str | Path,
     page: int,
@@ -76,11 +92,20 @@ def vector_spaces(
     # Without a scale, door size is unknown, so allow a wide range. Wall evidence still filters.
     low, high = (400 / mm_per_pt, 1300 / mm_per_pt) if mm_per_pt else (4.0, 25.0)
     arcs = find_door_arcs(curves, low, high)
+    # A detailed drawing with almost no true arcs is an export that broke curves into tiny lines.
+    exploded = len(segments) > EXPLODED_MIN_SEGMENTS and len(arcs) < EXPLODED_MAX_ARCS
+    arc_pieces: set[Segment] = set()
+    if exploded:
+        drawn_arcs, arc_pieces = find_polyline_door_arcs(segments, low, high)
+        arcs = arcs + drawn_arcs
     doors, _ = doors_from_arcs(arcs, segments, walls)
     all_dots = detect_leader_dots(primitives.fills, None, segments=primitives.segments)
     dots = [d for d in all_dots if _in_region(d.point, region)]
-    leaders = find_leader_lines(primitives.segments, dots)
-    cells = free_cells(region, build_wall_lines(segments, curves, doors, leaders, arcs, wall_widths=widths))
+    leaders = find_leader_lines(primitives.segments, dots) | arc_pieces
+    if exploded:
+        leaders |= _centreline_pieces(segments)
+    wall_lines = build_wall_lines(segments, curves, doors, leaders, arcs, wall_widths=widths)
+    cells = free_cells_on_grid(region, wall_lines) if exploded else free_cells(region, wall_lines)
 
     gray, pt_per_px = load_gray(path, page, dpi, region)
     scale = 1.0 / pt_per_px
@@ -114,7 +139,7 @@ def vector_spaces(
         )
         by_number[number] = cell
     assert labels.shape == (height, width)
-    return FoundSpaces("vector", Segmentation(labels, spaces, 0.0), gray, scale, region, doors, by_number, primitives, dots)
+    return FoundSpaces("vector", Segmentation(labels, spaces, 0.0), gray, scale, region, doors, by_number, primitives, dots, exploded)
 
 
 def raster_spaces(path: str | Path, page: int = 0, region=None, neck_px: float | None = None) -> FoundSpaces:

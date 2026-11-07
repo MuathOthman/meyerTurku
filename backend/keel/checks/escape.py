@@ -13,13 +13,50 @@ from keel.checks.common import (
 )
 from keel.geometry import clear_width, dead_end_length, inscribed_diameter, side_of_line, without_thin_obstacles
 from keel.graph import EXIT_CATEGORIES, build_graph, escape_path, exit_ids, independent_exit_routes
-from keel.model import Category, Deck, Door
+from keel.model import Category, Deck, Door, Space
 from keel.rules import Rule
 from keel.verdict import Finding, Verdict, geometric_verdict, numeric_verdict
 
 
 # A side branch serves few people, and how the width rule applies to it is a judgment call.
 BRANCH_APPLICABILITY = 0.5
+SHAPE_SOURCE = "shape"
+MIN_ROUTE_MM = 500.0
+# Whether these class clauses apply depends on facts the drawing does not show.
+DISPENSATION_APPLICABILITY = 0.5
+
+
+def _corridor_width_by_shape(deck: Deck, rule: Rule, space: Space) -> Finding | None:
+    """A corridor found from its shape: measure along its own length, end to end.
+
+    Starting from doors would measure into door recesses, which are not the route. Parts
+    narrower than the smallest route are left out, so a tail cannot pass as the corridor.
+    """
+    polygon = space.polygon()
+    core = polygon.buffer(-MIN_ROUTE_MM / 2)
+    if core.is_empty:
+        return None
+    part = max(getattr(core, "geoms", [core]), key=lambda g: g.area)
+    points = list(part.exterior.coords)
+    middle = (part.centroid.x, part.centroid.y)
+    first = max(points, key=lambda p: (p[0] - middle[0]) ** 2 + (p[1] - middle[1]) ** 2)
+    last = max(points, key=lambda p: (p[0] - first[0]) ** 2 + (p[1] - first[1]) ** 2)
+    narrowest = clear_width(polygon, [first, last])
+    tolerance = deck.tolerance_mm(narrowest.width_mm)
+    verdict = numeric_verdict(
+        narrowest.width_mm, rule.value_mm, rule.operator, tolerance,
+        classification_confidence=space.classification_confidence,
+    )
+    return base_finding(
+        deck, rule, verdict, space.id, space.name, narrowest.location,
+        numeric_why(verdict, "Narrowest clear width along this corridor", narrowest.width_mm, rule.value_mm, tolerance, rule.operator),
+        measured_mm=narrowest.width_mm, required_mm=rule.value_mm, tolerance_mm=tolerance,
+        assumptions=[
+            "This space was read as a corridor from its shape: long, narrow and lined with doors.",
+            "Obstacles thinner than 110 mm, such as door symbols and trim, are ignored.",
+        ],
+        overlay_polygon_pt=outline_pt(deck, space),
+    )
 
 
 def corridor_width(deck: Deck, rule: Rule) -> list[Finding]:
@@ -31,6 +68,11 @@ def corridor_width(deck: Deck, rule: Rule) -> list[Finding]:
     findings = []
     exits = exit_ids(deck)
     for space in deck.by_category(Category.CORRIDOR):
+        if space.label_source == SHAPE_SOURCE:
+            finding = _corridor_width_by_shape(deck, rule, space)
+            if finding is not None:
+                findings.append(finding)
+            continue
         doors = [d for d in deck.doors_of(space.id) if is_escape_door(d)]
         exit_doors = [d for d in doors if d.other_side(space.id) in exits]
         route_doors = exit_doors if len(exit_doors) >= 2 else doors
@@ -113,6 +155,89 @@ def stair_width(deck: Deck, rule: Rule) -> list[Finding]:
             )
         )
     return findings
+
+
+def sole_stair(deck: Deck, rule: Rule) -> list[Finding]:
+    """The drawing does not show dispensations, so a shortfall here can only go to an engineer."""
+    findings = []
+    for space in deck.by_category(Category.STAIR):
+        width, center = inscribed_diameter(without_thin_obstacles(space.polygon()))
+        tolerance = deck.tolerance_mm(width)
+        verdict = numeric_verdict(
+            width, rule.value_mm, rule.operator, tolerance,
+            applicability_confidence=DISPENSATION_APPLICABILITY,
+            classification_confidence=space.classification_confidence,
+        )
+        findings.append(
+            base_finding(
+                deck, rule, verdict, space.id, space.name, center,
+                numeric_why(verdict, "Clear stair width", width, rule.value_mm, tolerance, rule.operator),
+                measured_mm=width, required_mm=rule.value_mm, tolerance_mm=tolerance,
+                assumptions=[
+                    "Applies only if this stair is a sole means of escape under a dispensation, which the drawing does not show.",
+                    "Width is the largest circle fitting in the stair enclosure on plan. Handrails are not deducted.",
+                ],
+                overlay_polygon_pt=outline_pt(deck, space),
+            )
+        )
+    return findings
+
+
+def _is_galley_or_laundry(space: Space) -> bool:
+    return space.category == Category.GALLEY or "LAUNDRY" in space.name.upper()
+
+
+def galley_lobby(deck: Deck, rule: Rule) -> list[Finding]:
+    """Check what separates a galley or laundry from a stair: nothing, or a space of enough size."""
+    findings = []
+    assumption = "A fire hose station is also required. Keel cannot see it, so an engineer must confirm it."
+    stairs = {s.id for s in deck.by_category(Category.STAIR)}
+    seen = set()
+    for source in filter(_is_galley_or_laundry, deck.spaces):
+        for door in deck.doors_of(source.id):
+            between_id = door.other_side(source.id)
+            if between_id is None:
+                continue
+            if between_id in stairs:
+                findings.append(
+                    base_finding(
+                        deck, rule, Verdict.NEEDS_REVIEW, door.id, f"{source.name} to stair", door.midpoint_mm,
+                        f"{source.name} opens directly onto a stair, with no lobby between them.",
+                        assumptions=[assumption],
+                        overlay_polygon_pt=outline_pt(deck, source),
+                    )
+                )
+                continue
+            between = deck.space(between_id)
+            to_stair = [d for d in deck.doors_of(between_id) if d.other_side(between_id) in stairs]
+            if not to_stair or (source.id, between_id) in seen:
+                continue
+            seen.add((source.id, between_id))
+            findings.append(_lobby_finding(deck, rule, source, between, door, to_stair[0], assumption))
+    return findings
+
+
+def _lobby_finding(deck: Deck, rule: Rule, source: Space, lobby: Space, door_in: Door, door_out: Door, assumption: str) -> Finding:
+    narrowest = clear_width(lobby.polygon(), [door_in.midpoint_mm, door_out.midpoint_mm])
+    tolerance = deck.tolerance_mm(narrowest.width_mm)
+    verdict = numeric_verdict(
+        narrowest.width_mm, rule.value_mm, rule.operator, tolerance,
+        applicability_confidence=DISPENSATION_APPLICABILITY,
+        classification_confidence=lobby.classification_confidence,
+    )
+    why = numeric_why(verdict, f"Clear width from {source.name} to the stair", narrowest.width_mm, rule.value_mm, tolerance, rule.operator)
+    why += f" Deck area is {lobby.area_m2:.1f} m2; the rule requires at least {rule.minimum_area_m2:g} m2."
+    # Never PASS: the rule also requires a fire hose station, which Keel cannot see.
+    if verdict != Verdict.FAIL:
+        verdict = Verdict.NEEDS_REVIEW
+    if lobby.area_m2 >= rule.minimum_area_m2 and narrowest.width_mm >= rule.value_mm:
+        why += " The size is enough, so an engineer should confirm the fire hose station and that this rule applies here."
+    return base_finding(
+        deck, rule, verdict, f"{source.id}/{lobby.id}", f"{lobby.name}, from {source.name}", narrowest.location, why,
+        measured_mm=narrowest.width_mm, required_mm=rule.value_mm, tolerance_mm=tolerance,
+        assumptions=[assumption],
+        overlay_polygon_pt=outline_pt(deck, lobby),
+    )
 
 
 def stair_capacity(deck: Deck, rule: Rule) -> list[Finding]:
