@@ -59,3 +59,70 @@
     A wheelchair user must be able to turn around, or they cannot leave the room facing forward.
   fix: >-
     Move furniture or enlarge the room to clear a {required} mm circle, or show that a T-shaped turning space fits.
+# PVAG: the Access Board's proposed Passenger Vessel Accessibility Guidelines (June 2013), which
+# apply ADA to large passenger vessels. Not yet a final rule. Values read in the published text.
+- id: PVAG-DOOR-CLEAR
+  title: Clear width of doorways on accessible routes (passenger vessels)
+  source: "PVAG (proposed 2013) V404.2.3"
+  ref_url: "https://www.access-board.gov/pvag/ch-v4/#v404"
+  type: numeric
+  scope: accessibility
+  applies_to: [accessible]
+  parameter: door_clear_width
+  operator: ">="
+  value_mm: 815
+  value_status: verified
+  check: accessible_door
+  ship_types: [passenger]
+  interpretation_note: >-
+    The proposed guideline, not yet final. Measured between the door face and the stop with the
+    door open 90 degrees, estimated from leaf width minus a frame allowance. Openings deeper than
+    610 mm need 915 mm, which Keel does not test. Same value as ADA 404.2.3.
+  why_it_matters: >-
+    A wheelchair user needs this clear width to get through a door at all. Below it, the cabin or
+    space is out of reach for that passenger.
+  fix: >-
+    Fit a wider door or offset hinges to add {shortfall} mm of clear opening, reaching {required} mm.
+- id: PVAG-ROUTE-WIDTH
+  title: Clear width of onboard accessible routes (passenger vessels)
+  source: "PVAG (proposed 2013) V403.5.1"
+  ref_url: "https://www.access-board.gov/pvag/ch-v4/#v403"
+  type: numeric
+  scope: accessibility
+  applies_to: [accessible]
+  parameter: clear_width
+  operator: ">="
+  value_mm: 915
+  value_status: verified
+  check: accessible_route
+  ship_types: [passenger]
+  interpretation_note: >-
+    The proposed guideline, not yet final. Exception 1 allows 815 mm for up to 610 mm of length
+    between segments at least 1220 mm long and 915 mm wide. Keel does not apply it automatically,
+    so such a case goes to review. Same value as ADA 403.5.1.
+  why_it_matters: >-
+    One narrow point stops a wheelchair user even if the rest of the route is wide enough.
+  fix: >-
+    Widen the route by {shortfall} mm to reach {required} mm, or check whether Exception 1 applies.
+- id: PVAG-TURNING
+  title: Turning space in accessible spaces (passenger vessels)
+  source: "PVAG (proposed 2013) V304.3.1"
+  ref_url: "https://www.access-board.gov/pvag/ch-v3/#v304"
+  type: numeric
+  scope: accessibility
+  applies_to: [accessible]
+  parameter: turning_diameter
+  operator: ">="
+  value_mm: 1525
+  value_status: verified
+  check: accessible_turning
+  ship_types: [passenger]
+  interpretation_note: >-
+    The proposed guideline, not yet final. A 1525 mm circle. A T-shaped space (V304.3.2, within a
+    1525 mm square with 915 mm arms) is an alternative that Keel does not test, so a shortfall
+    goes to review. Same value as ADA 304.3.1.
+  why_it_matters: >-
+    A wheelchair user must be able to turn around, or they cannot leave the space facing forward.
+  fix: >-
+    Move furniture or enlarge the space to clear a {required} mm circle, or show that a T-shaped
+    turning space fits.
