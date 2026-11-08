@@ -124,7 +124,7 @@ class DeadEnd:
 
 
 def dead_end_length(
-    polygon: Polygon, exits: list[PointMM], cell_mm: float = 100.0
+    polygon: Polygon, exits: list[PointMM], cell_mm: float = 100.0, recess_allowance: bool = True
 ) -> DeadEnd:
     """Longest walk from the through-route between exits to the far end of the corridor.
 
@@ -197,6 +197,9 @@ def dead_end_length(
     tip_cell = max(distance, key=distance.get)
     tip = (minx + tip_cell[0] * cell_mm, miny + tip_cell[1] * cell_mm)
     walked = distance[tip_cell] * cell_mm
+    if not recess_allowance:
+        # The plain walk to the farthest point, such as travel distance to a room's door.
+        return DeadEnd(walked, tip, len(route_cells) * cell_mm)
     local_width, _ = inscribed_diameter(floor.intersection(Point(tip).buffer(2000.0)))
     return DeadEnd(max(0.0, walked - local_width), tip, len(route_cells) * cell_mm)
 

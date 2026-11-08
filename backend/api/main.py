@@ -39,6 +39,7 @@ from keel.projects import DEFAULT_PROJECT, ProjectInput, add_project, get_projec
 from keel.report import sort_findings
 from keel.rules import SHIP_TYPES, load_rules
 from keel.sheet import DeckPlan, SheetScale, find_deck_plans, sheet_scale
+from keel.ship import Particulars, read_particulars, ship_checks
 from keel.sources import (
     SourceInput,
     add_source,
@@ -503,6 +504,31 @@ def set_project_rules(project_id: str, selection: RuleSelection) -> dict:
     if unknown := [i for i in selection.rule_ids if i not in known]:
         raise HTTPException(422, f"Unknown rules: {unknown}")
     return set_rule_selection(PROJECTS, project_id, selection.rule_ids).model_dump()
+
+
+@app.get("/api/projects/{project_id}/ship")
+def ship_overview(project_id: str) -> dict:
+    """Checks for the whole ship: limits from its main dimensions, and the spaces rules need."""
+    project = get_project(PROJECTS, project_id)
+    if project is None:
+        raise HTTPException(404)
+    analyses = []
+    for path in RESULTS.glob("*/result.json") if RESULTS.is_dir() else []:
+        body = json.loads(path.read_text())
+        if body.get("project", DEFAULT_PROJECT) == project_id:
+            analyses.append(body)
+    analyses.sort(key=lambda a: a.get("deck") or a.get("source", ""))
+    particulars = Particulars()
+    for body in analyses:
+        pdf = RESULTS / body["id"] / "input.pdf"
+        if pdf.is_file():
+            particulars = read_particulars(pdf, body.get("page", 0))
+            if particulars.length_overall_m is not None:
+                break
+    # A floor records the ship type it was checked for, which may differ from the project's.
+    types = [a["ship_type"] for a in analyses if a.get("ship_type")]
+    ship_type = max(set(types), key=types.count) if types else project.ship_type
+    return {**ship_checks(analyses, particulars, ship_type), "ship_type": ship_type}
 
 
 @app.get("/api/meta")

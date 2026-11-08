@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { PlanGeometry } from "@/components/PlanView";
 import {
+  AI_ANSWER,
   DECISION_LABEL,
   symbol,
   useRecordDecision,
@@ -60,6 +61,8 @@ export function FindingDetail({
     f.why_it_matters,
     ...(f.interpretation_note ? [f.interpretation_note] : []),
   ].filter(Boolean);
+  // Meets the limit on paper, but by less than the drawing can be measured to: not a failure.
+  const closeCall = f.verdict !== "PASS" && f.margin_mm !== null && f.margin_mm >= 0;
   return (
     <section className="card finding-detail" id="finding-detail">
       <header>
@@ -75,11 +78,15 @@ export function FindingDetail({
       <div className="detail-columns">
         <div>
           <span className="eyebrow">
-            {f.verdict === "PASS" ? "Why this meets the rule" : "Why this may not comply"}
+            {f.verdict === "PASS"
+              ? "Why this meets the rule"
+              : closeCall
+                ? "Why an engineer should check: too close to call"
+                : "Why this may not comply"}
           </span>
           {f.measured_display && (
             <div className="measures">
-              <div data-bad={f.verdict !== "PASS"}>
+              <div data-bad={f.verdict !== "PASS" && !closeCall} data-close={closeCall}>
                 <small>Measured</small>
                 <b>{f.measured_display}</b>
               </div>
@@ -99,13 +106,20 @@ export function FindingDetail({
               </li>
             ))}
           </ol>
+          {f.ai_look && (
+            <p className="ai-look" data-answer={f.ai_look.answer}>
+              <strong>{AI_ANSWER[f.ai_look.answer]}.</strong> Keel could not measure this, so the
+              AI looked at the drawing. It does not measure, and its answer is not a verdict: look
+              at the outlined area and accept or reject it.
+            </p>
+          )}
           {f.explanation && (
             <p className="ai-note">
               <strong>AI note, not used in the verdict:</strong> {f.explanation}
             </p>
           )}
         </div>
-        <div>
+        <div className="detail-side">
           <span className="eyebrow">Resources</span>
           <div className="resources">
             <div className="resource">
@@ -148,8 +162,8 @@ export function FindingDetail({
               </div>
             ))}
           </div>
+          <SuggestedDesign finding={f} plan={plan} mmPerUnit={mmPerUnit} />
         </div>
-        <SuggestedDesign finding={f} plan={plan} mmPerUnit={mmPerUnit} />
       </div>
       {f.verdict === "PASS" ? null : testScenario ? (
         <p className="muted">This is an injected test scenario, so decisions are not recorded.</p>

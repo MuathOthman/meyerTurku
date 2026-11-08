@@ -7,6 +7,7 @@ AI alone can never cause a FAIL. An engineer's review is what raises confidence.
 from __future__ import annotations
 
 import logging
+import re
 
 from keel.llm import LLM, LLMError
 from keel.model import Category
@@ -20,9 +21,34 @@ LLM_CONFIDENCE_CAP = 0.75
 KEYWORDS: list[tuple[str, Category]] = [
     ("BOARDING", Category.OPEN_DECK),
     ("EMERGENCY CONTROL", Category.CONTROL),
+    ("ENGINE CONTROL", Category.CONTROL),
     ("GALLEY", Category.GALLEY),
     ("SCULLERY", Category.GALLEY),
-    ("STORES", Category.STORES),
+    # A workshop before ENGINEER, or "ENGINEER'S WORKSHOP" would read as a cabin.
+    ("WORKSHOP", Category.SERVICE),
+    # Sanitary before CABIN, or "SANITARY CABIN" would read as a sleeping cabin.
+    ("SANITARY", Category.SANITARY),
+    ("TOILET", Category.SANITARY),
+    ("SHOWER", Category.SANITARY),
+    ("CHANGING ROOM", Category.SANITARY),
+    ("CHANGE ROOM", Category.SANITARY),
+    ("SAUNA", Category.SANITARY),
+    ("COLD STORE", Category.STORES),
+    ("FREEZER", Category.STORES),
+    ("PROVISION COOLING", Category.MACHINERY),
+    ("PROVISION", Category.STORES),
+    ("LINEN", Category.STORES),
+    ("STORE", Category.STORES),
+    ("ENGINE ROOM", Category.MACHINERY),
+    ("STEERING GEAR", Category.MACHINERY),
+    ("THRUSTER", Category.MACHINERY),
+    ("SWITCHBOARD", Category.MACHINERY),
+    ("HPU ROOM", Category.MACHINERY),
+    ("WINCH DRIVE", Category.MACHINERY),
+    ("DRIVE ROOM", Category.MACHINERY),
+    ("SEWAGE", Category.MACHINERY),
+    ("AC ROOM", Category.MACHINERY),
+    ("GYMNASIUM", Category.PUBLIC),
     ("MESS", Category.PUBLIC),
     ("LOUNGE", Category.PUBLIC),
     ("W/C", Category.SANITARY),
@@ -70,11 +96,22 @@ KEYWORDS: list[tuple[str, Category]] = [
 ]
 
 
+# "DRY LINEN BELOW STAIRWAY" is a store under a stair, not a stair. OCR may garble the word,
+# as in "BELOW STARWA YR", so anything after "below sta..." is dropped.
+UNDER_STAIR = re.compile(r"\b(BELOW|UNDER|BENEATH|BESIDE|NEXT TO)\s+STA.*$")
+
+
 def classify_by_keyword(name: str) -> tuple[Category, float] | None:
     upper = name.upper()
+    under_stair = UNDER_STAIR.search(upper)
+    if under_stair:
+        upper = upper[: under_stair.start()]
     for keyword, category in KEYWORDS:
         if keyword in upper:
             return category, KEYWORD_CONFIDENCE
+    if under_stair:
+        # Nothing else named: a space under a stair is a store or locker.
+        return Category.SERVICE, KEYWORD_CONFIDENCE
     return None
 
 

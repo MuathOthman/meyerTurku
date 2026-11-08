@@ -87,7 +87,7 @@ export function useFloors(projectId?: string): { floors: Floor[]; isPending: boo
 /** Floors with the demo deck's counts filled in, which costs a measurement of that deck. */
 export function useFloorsWithCounts(projectId?: string): { floors: Floor[]; isPending: boolean } {
   const { floors, isPending } = useFloors(projectId);
-  const demo = useFindings("", false);
+  const demo = useFindings("");
   const counts = demo.data?.counts ?? null;
   return {
     floors: useMemo(

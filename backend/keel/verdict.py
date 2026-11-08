@@ -87,5 +87,7 @@ class Finding(BaseModel):
     overlay_lines_pt: list[list[tuple[float, float]]] = Field(default_factory=list)
     overlay_polygon_pt: list[tuple[float, float]] = Field(default_factory=list)
     explanation: str | None = None
+    # What the vision model saw where Keel could not measure. Evidence only, never a verdict.
+    ai_look: dict | None = None
     why_it_matters: str = ""
     fix: str = ""

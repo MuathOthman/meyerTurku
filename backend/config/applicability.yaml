@@ -55,7 +55,8 @@ control:
   - {ref: "SOLAS II-2/9", what: "Fire integrity of control station boundaries.", confirmed: false}
 
 machinery:
-  - {ref: "SOLAS II-2/13.4", what: "Means of escape from machinery spaces. Category A spaces generally need two. An engineer must decide the category.", confirmed: true}
+  - {ref: "SOLAS II-2/13.4.2.1", what: "Cargo ships: two means of escape from a machinery space of category A, such as two widely separated steel ladders. An engineer decides the category.", confirmed: true, rule: ESC-MACH-A-TWO-MEANS}
+  - {ref: "SOLAS II-2/13.4.2.3", what: "Cargo ships: two escape routes from other machinery spaces, or one if the walk to the door is 5 m or less.", confirmed: true, rule: ESC-MACH-OTHER-ROUTES}
   - {ref: "SOLAS II-2/9", what: "Fire integrity of the boundaries.", confirmed: false}
 
 service:

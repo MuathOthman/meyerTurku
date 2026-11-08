@@ -785,11 +785,18 @@ button.project-pill[data-current="true"]:hover {
   flex-wrap: wrap;
   gap: 4px;
 }
+/* The list a quarter of the width, the chosen check or room the rest, side by side. */
 .findings-layout {
   display: grid;
-  grid-template-columns: 340px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 3fr);
   gap: 18px;
   align-items: start;
+}
+.findings-layout > .findings-list {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
 }
 .finding-row {
   width: 100%;
@@ -1735,4 +1742,151 @@ th {
 .check-hint {
   padding: 0 18px 8px;
   font-size: 12.5px;
+}
+
+/* Whole ship */
+.ship-dims {
+  margin: 8px 0 0;
+  font-weight: 600;
+  color: var(--ink);
+}
+.ship-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.ship-count {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.ship-count strong {
+  font: 600 26px/1.1 var(--heading);
+}
+.ship-count small {
+  color: var(--muted);
+}
+.ship-count[data-tone="review"] strong,
+.ship-badge[data-tone="review"] {
+  color: var(--review);
+}
+.ship-count[data-tone="pass"] strong,
+.ship-badge[data-tone="pass"] {
+  color: var(--pass);
+}
+.ship-count[data-tone="info"] strong,
+.ship-badge[data-tone="info"] {
+  color: rgb(30, 90, 190);
+}
+.ship-group {
+  margin-bottom: 16px;
+}
+.ship-row {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 16px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--line-soft);
+}
+.ship-row p {
+  margin: 4px 0 0;
+  color: var(--text);
+}
+.ship-badge {
+  align-self: start;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  background: var(--bg);
+  color: var(--muted);
+}
+.ship-badge[data-tone="review"] {
+  background: var(--review-bg);
+}
+.ship-badge[data-tone="pass"] {
+  background: var(--pass-bg);
+}
+.ship-badge[data-tone="info"] {
+  background: rgb(232, 240, 253);
+}
+.ship-where {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+@media (max-width: 640px) {
+  .ship-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}
+
+/* A check by hand with a recorded result reads as done at a glance. */
+.status[data-result="complies"] {
+  color: var(--pass);
+  background: var(--pass-bg);
+  border-color: var(--pass);
+}
+.status[data-result="does_not_comply"] {
+  color: var(--fail);
+  background: var(--fail-bg);
+  border-color: var(--fail);
+}
+.status[data-result="need_info"] {
+  color: var(--review);
+  background: var(--review-bg);
+  border-color: var(--review);
+}
+
+/* Where the AI looked instead of Keel measuring: violet, so it never reads as a verdict. */
+.check-group[data-tone="ai"] .check-count {
+  color: rgb(105, 65, 198);
+  background: rgb(243, 238, 255);
+}
+.ai-tag {
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 5px;
+  border: 1px dashed rgb(105, 65, 198);
+  color: rgb(105, 65, 198);
+  background: rgb(243, 238, 255);
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.ai-tag[data-answer="looks_wrong"] {
+  border-style: solid;
+}
+.ai-look {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px dashed rgb(105, 65, 198);
+  background: rgb(243, 238, 255);
+  color: var(--ink);
+}
+
+/* Resources with the suggested design underneath, beside the reasons. */
+.detail-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.detail-side > .eyebrow + .resources + * {
+  margin-top: 18px;
+}
+.measures > div[data-close="true"] {
+  background: var(--review-bg);
+}
+.measures > div[data-close="true"] b {
+  color: var(--review);
 }

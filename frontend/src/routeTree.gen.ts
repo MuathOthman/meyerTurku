@@ -25,6 +25,7 @@ import { Route as AppAnalysisJobIdRouteImport } from './routes/app.analysis.$job
 import { Route as AppProjectsNewRouteImport } from './routes/app.projects.new'
 import { Route as AppProjectsProjectIdFilesRouteImport } from './routes/app.projects.$projectId.files'
 import { Route as AppProjectsProjectIdRulesRouteImport } from './routes/app.projects.$projectId.rules'
+import { Route as AppProjectsProjectIdShipRouteImport } from './routes/app.projects.$projectId.ship'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -108,6 +109,12 @@ const AppProjectsProjectIdRulesRoute =
     path: '/projects/$projectId/rules',
     getParentRoute: () => AppRoute,
   } as any)
+const AppProjectsProjectIdShipRoute =
+  AppProjectsProjectIdShipRouteImport.update({
+    id: '/projects/$projectId/ship',
+    path: '/projects/$projectId/ship',
+    getParentRoute: () => AppRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -126,6 +133,7 @@ export interface FileRoutesByFullPath {
   '/app/projects/new': typeof AppProjectsNewRoute
   '/app/projects/$projectId/files': typeof AppProjectsProjectIdFilesRoute
   '/app/projects/$projectId/rules': typeof AppProjectsProjectIdRulesRoute
+  '/app/projects/$projectId/ship': typeof AppProjectsProjectIdShipRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -143,6 +151,7 @@ export interface FileRoutesByTo {
   '/app/projects/new': typeof AppProjectsNewRoute
   '/app/projects/$projectId/files': typeof AppProjectsProjectIdFilesRoute
   '/app/projects/$projectId/rules': typeof AppProjectsProjectIdRulesRoute
+  '/app/projects/$projectId/ship': typeof AppProjectsProjectIdShipRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -162,6 +171,7 @@ export interface FileRoutesById {
   '/app/projects/new': typeof AppProjectsNewRoute
   '/app/projects/$projectId/files': typeof AppProjectsProjectIdFilesRoute
   '/app/projects/$projectId/rules': typeof AppProjectsProjectIdRulesRoute
+  '/app/projects/$projectId/ship': typeof AppProjectsProjectIdShipRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -182,6 +192,7 @@ export interface FileRouteTypes {
     | '/app/projects/new'
     | '/app/projects/$projectId/files'
     | '/app/projects/$projectId/rules'
+    | '/app/projects/$projectId/ship'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -199,6 +210,7 @@ export interface FileRouteTypes {
     | '/app/projects/new'
     | '/app/projects/$projectId/files'
     | '/app/projects/$projectId/rules'
+    | '/app/projects/$projectId/ship'
   id:
     | '__root__'
     | '/'
@@ -217,6 +229,7 @@ export interface FileRouteTypes {
     | '/app/projects/new'
     | '/app/projects/$projectId/files'
     | '/app/projects/$projectId/rules'
+    | '/app/projects/$projectId/ship'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -340,6 +353,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProjectsProjectIdRulesRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/projects/$projectId/ship': {
+      id: '/app/projects/$projectId/ship'
+      path: '/projects/$projectId/ship'
+      fullPath: '/app/projects/$projectId/ship'
+      preLoaderRoute: typeof AppProjectsProjectIdShipRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -356,6 +376,7 @@ interface AppRouteChildren {
   AppProjectsNewRoute: typeof AppProjectsNewRoute
   AppProjectsProjectIdFilesRoute: typeof AppProjectsProjectIdFilesRoute
   AppProjectsProjectIdRulesRoute: typeof AppProjectsProjectIdRulesRoute
+  AppProjectsProjectIdShipRoute: typeof AppProjectsProjectIdShipRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -371,6 +392,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppProjectsNewRoute: AppProjectsNewRoute,
   AppProjectsProjectIdFilesRoute: AppProjectsProjectIdFilesRoute,
   AppProjectsProjectIdRulesRoute: AppProjectsProjectIdRulesRoute,
+  AppProjectsProjectIdShipRoute: AppProjectsProjectIdShipRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

@@ -86,7 +86,7 @@ function AgentWork({ id }: { id: AgentId }) {
     case "evidence":
       return (
         <p>
-          Writes notes on request: open a floor and choose “Add AI notes”.{" "}
+          Every finding shows its measurement, source, why it matters and what to do.{" "}
           <Link to="/app">Open the demo deck</Link>
         </p>
       );

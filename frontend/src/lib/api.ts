@@ -44,6 +44,8 @@ export type Finding = {
   overlay_lines_pt: Point[][];
   overlay_polygon_pt: Point[];
   explanation: string | null;
+  /** What the AI saw where Keel could not measure. Evidence for the engineer, never a verdict. */
+  ai_look?: AiLook | null;
   why_it_matters: string;
   fix: string;
   pin?: string;
@@ -154,7 +156,7 @@ export type Analysis = {
   findings?: Finding[];
   created_at: string;
   spaces: AnalysedSpace[];
-  set_aside: { number: number; description: string }[];
+  set_aside: { number: number; description: string; reason: string }[];
 };
 
 export type AnalysisSummary = Pick<Analysis, "id" | "source" | "page" | "created_at"> & {
@@ -305,12 +307,11 @@ export const useMeta = () =>
 export const useSpaces = () =>
   useQuery({ queryKey: ["spaces"], queryFn: () => request<Space[]>("/api/spaces") });
 
-export function useFindings(scenario: string, explain: boolean) {
+export function useFindings(scenario: string) {
   const query = new URLSearchParams();
   if (scenario) query.set("scenario", scenario);
-  if (explain) query.set("explain", "true");
   return useQuery({
-    queryKey: ["findings", scenario, explain],
+    queryKey: ["findings", scenario],
     queryFn: () => request<Findings>(`/api/findings?${query}`),
     placeholderData: (previous) => previous,
   });
@@ -506,3 +507,40 @@ export function requirement(r: Rule): string {
   if (r.minimum_routes !== null) return `At least ${r.minimum_routes} routes`;
   return "Geometry check";
 }
+
+/** One thing to check for the whole ship, from its main dimensions or across all its decks. */
+export type ShipItem = {
+  regulation: string;
+  ref: string;
+  title: string;
+  status: "value" | "shown" | "not_shown" | "by_hand" | "not_applicable";
+  detail: string;
+  where: { analysis: string; deck: string; space: string; number: number }[];
+};
+
+export type ShipOverview = {
+  particulars: {
+    length_overall_m: number | null;
+    length_pp_m: number | null;
+    breadth_m: number | null;
+    frame_spacing_mm: number | null;
+    title: string;
+  };
+  decks: { analysis: string; deck: string }[];
+  items: ShipItem[];
+  ship_type: string;
+};
+
+export const useShipOverview = (projectId: string) =>
+  useQuery({
+    queryKey: ["ship", projectId],
+    queryFn: () => request<ShipOverview>(`/api/projects/${encodeURIComponent(projectId)}/ship`),
+  });
+
+export type AiLook = { answer: "looks_ok" | "looks_wrong" | "unsure"; seen: string; count: number };
+
+export const AI_ANSWER: Record<AiLook["answer"], string> = {
+  looks_ok: "AI: looks OK",
+  looks_wrong: "AI: looks wrong",
+  unsure: "AI: unsure",
+};

@@ -5,6 +5,7 @@ import { Check, LoaderCircle } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import {
   currentDecisions,
+  AI_ANSWER,
   DECISION_LABEL,
   manualCheckKey,
   manualChecksOf,
@@ -28,6 +29,13 @@ import {
   type Regulation,
 } from "@/lib/api";
 import { DEFAULT_PROJECT, fileOf, floorName, useProject } from "@/lib/floors";
+
+/** The badge on a check by hand once someone has recorded a result. */
+const MANUAL_RESULT: Record<string, string> = {
+  complies: "✓ Complies",
+  does_not_comply: "✗ Does not comply",
+  need_info: "Need info",
+};
 
 export const Route = createFileRoute("/app/analysis/$jobId")({
   head: () => ({ meta: [{ title: "Checked deck · Keel" }] }),
@@ -139,15 +147,23 @@ function AnalysisResult({ jobId }: { jobId: string }) {
   const notApplied = (r.findings ?? []).filter((f) => f.could_not_check);
   const tab = chosenTab ?? (findings.length || manual.length ? "Checks" : "Rooms");
   const fails = findings.filter((f) => f.verdict === "FAIL");
-  const reviews = findings.filter((f) => f.verdict === "NEEDS_REVIEW");
+  const reviews = findings.filter((f) => f.verdict === "NEEDS_REVIEW" && !f.ai_look);
+  // Where Keel could not measure, the AI looked. Shown apart, so a guess never reads as a measurement.
+  const aiLooked = findings.filter((f) => f.ai_look);
   const passes = findings.filter((f) => f.verdict === "PASS");
   // Open on what needs the engineer most: a fail, then a review, then a check by hand.
   const currentManual = manual.find((m) => m.ref === manualRef);
   const currentFinding = currentManual
     ? undefined
-    : (findings.find((f) => f.pin === pin) ?? fails[0] ?? reviews[0]);
+    : (findings.find((f) => f.pin === pin) ?? fails[0] ?? reviews[0] ?? aiLooked[0]);
   const shownManual = currentManual ?? (currentFinding ? undefined : manual[0]);
   const decisions = currentDecisions(decisionLog.data ?? []);
+  // A check by hand is done once someone records a result. "Need info" keeps it open.
+  const manualDone = manual.filter((m) => {
+    const d = decisions.get(manualCheckKey(r.id, m.ref))?.decision;
+    return d === "complies" || d === "does_not_comply";
+  }).length;
+  const manualLeft = manual.length - manualDone;
   const decisionKey = (f: Finding) => `${r.id}:${f.rule_id}:${f.subject_id}`;
   const scale = r.plan_scale ?? 1;
   const [originX, originY] = r.plan_origin ?? [0, 0];
@@ -313,13 +329,13 @@ function AnalysisResult({ jobId }: { jobId: string }) {
         {TABS.map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
             {t === "Checks"
-              ? `Checks · ${fails.length} fail · ${reviews.length} review · ${manual.length} by hand`
+              ? `Checks · ${fails.length} fail · ${reviews.length} review · ${aiLooked.length} AI looked · ${manualLeft} by hand`
               : `Rooms (${ordered.length})`}
           </button>
         ))}
       </div>
       {tab === "Checks" ? (
-        <div className="findings-stack">
+        <div className="findings-layout">
           <section className="card findings-list" aria-label="Checks">
             {toConfirm > 0 && (
               <p className="notice check-banner">
@@ -352,10 +368,26 @@ function AnalysisResult({ jobId }: { jobId: string }) {
               ))}
             </CheckGroup>
             <CheckGroup
+              title="AI looked: confirm"
+              tone="ai"
+              count={aiLooked.length}
+              hint="Keel could not measure these, so the AI looked at the drawing. Its answer is a lead, not a result: open each one, look, and accept or reject it."
+            >
+              {aiLooked.map((f) => (
+                <FindingRow
+                  key={f.pin}
+                  finding={f}
+                  active={f.pin === currentFinding?.pin}
+                  decision={decisions.get(decisionKey(f))}
+                  onOpen={() => openFinding(f)}
+                />
+              ))}
+            </CheckGroup>
+            <CheckGroup
               title="Check by hand"
               tone="manual"
-              count={manual.length}
-              hint="Applies here, but a drawing cannot show it. Check it and record the result."
+              count={manualLeft}
+              hint={`Applies here, but a drawing cannot show it. Check it and record the result.${manualDone ? ` ${manualDone} of ${manual.length} done.` : ""}`}
             >
               {manual.map((m) => {
                 const decision = decisions.get(manualCheckKey(r.id, m.ref));
@@ -369,16 +401,16 @@ function AnalysisResult({ jobId }: { jobId: string }) {
                       setManualRef(m.ref);
                     }}
                   >
-                    <span className="status">By hand</span>
+                    <span className="status" data-result={decision?.decision}>
+                      {MANUAL_RESULT[decision?.decision ?? ""] ?? "By hand"}
+                    </span>
                     <span>
                       <strong>{m.ref}</strong>
                       <small>{m.whats.join(" ")}</small>
                       <small>
                         {m.spaces.length} {m.spaces.length === 1 ? "room" : "rooms"}
+                        {decision?.note && ` · “${decision.note}”`}
                       </small>
-                      {decision && (
-                        <small className="decided">{DECISION_LABEL[decision.decision]}</small>
-                      )}
                     </span>
                   </button>
                 );
@@ -464,9 +496,21 @@ function AnalysisResult({ jobId }: { jobId: string }) {
             ))}
             {ordered.length === 0 && <p className="pad muted">No spaces were found.</p>}
             {r.set_aside.length > 0 && (
-              <p className="set-aside muted">
-                {r.set_aside.length} small areas were set aside, not treated as rooms.
-              </p>
+              <details className="set-aside">
+                <summary>
+                  {r.set_aside.length} areas set aside as not rooms: equipment, tanks, slivers and
+                  unreadable labels
+                </summary>
+                <ul className="not-applied">
+                  {r.set_aside
+                    .filter((a) => a.description)
+                    .map((a) => (
+                      <li key={a.number}>
+                        <strong>{a.description}.</strong> {a.reason}
+                      </li>
+                    ))}
+                </ul>
+              </details>
             )}
           </section>
           {current && (
@@ -584,7 +628,7 @@ function CheckGroup({
   children,
 }: {
   title: string;
-  tone: "fail" | "review" | "manual" | "pass";
+  tone: "fail" | "review" | "ai" | "manual" | "pass";
   count: number;
   hint?: string;
   /** Given for a group that starts closed, such as the passed checks. */
@@ -625,12 +669,19 @@ function FindingRow({
 }) {
   return (
     <button className="finding-row" aria-pressed={active} onClick={onOpen}>
-      <VerdictTag verdict={f.verdict} />
+      {f.ai_look ? (
+        <span className="ai-tag" data-answer={f.ai_look.answer}>
+          {AI_ANSWER[f.ai_look.answer]}
+        </span>
+      ) : (
+        <VerdictTag verdict={f.verdict} />
+      )}
       <span>
         <strong>
           {f.pin} · {f.subject_name}
         </strong>
         <small>{f.rule_title}</small>
+        {f.ai_look && <small>{f.ai_look.seen}</small>}
         {f.measured_display && (
           <small>
             {f.measured_display} · limit {symbol(f.operator)} {f.required_display}

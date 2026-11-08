@@ -1,0 +1,51 @@
+# Escape from machinery spaces, cargo ships. Read in the UK MCA copy of SOLAS II-2/13, 4.2.
+# Passenger ships have their own clauses in 13.4.1, which Keel does not check yet.
+
+- id: ESC-MACH-A-TWO-MEANS
+  title: Two means of escape from a machinery space of category A
+  source: "SOLAS II-2/13.4.2.1"
+  ref_url: "https://assets.publishing.service.gov.uk/media/5a80f3c6ed915d74e33fd543/Regulation_13_-_Means_of_Escape.pdf"
+  type: geometric
+  scope: escape
+  applies_to: [machinery]
+  parameter: escape_routes
+  minimum_routes: 2
+  value_status: verified
+  check: machinery_a_escape
+  ship_types: [cargo]
+  interpretation_note: >-
+    Either two sets of steel ladders, as widely separated as possible, leading to doors in the
+    upper part of the space, one of them inside a protected enclosure of at least 800 x 800 mm;
+    or one steel ladder and a steel door in the lower part of the space, well separated from it.
+    Under 1,000 gross tonnage the Administration may dispense with one means (13.4.2.2). Keel
+    reads the category from the room name and counts drawn stairs and doors.
+  why_it_matters: >-
+    Engine room fires grow fast and fill the space with smoke. A second, separate way out means
+    one fire cannot trap the engineers below.
+  fix: >-
+    Add a second steel ladder at the far end of the space, or a steel door in its lower part
+    leading to a safe escape route, well away from the first ladder.
+
+- id: ESC-MACH-OTHER-ROUTES
+  title: Escape routes from other machinery spaces
+  source: "SOLAS II-2/13.4.2.3"
+  ref_url: "https://assets.publishing.service.gov.uk/media/5a80f3c6ed915d74e33fd543/Regulation_13_-_Means_of_Escape.pdf"
+  type: numeric
+  scope: escape
+  applies_to: [machinery]
+  parameter: travel_distance
+  operator: "<="
+  value_mm: 5000
+  value_status: verified
+  check: machinery_other_escape
+  ship_types: [cargo]
+  interpretation_note: >-
+    Two escape routes are required. A single route is accepted when the longest walk to the
+    door is 5 m or less, or when the space is entered only occasionally. Keel measures the walk
+    but cannot know how often the space is entered, so a longer walk goes to review.
+  why_it_matters: >-
+    With one door, anyone at the far end must walk past the fire to get out. The 5 m limit keeps
+    that walk short.
+  fix: >-
+    Add a second door, or rearrange the space so no point is more than {required} mm from the
+    door. It is now {shortfall} mm too far.

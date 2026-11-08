@@ -38,8 +38,8 @@ export const AGENTS: Agent[] = [
   {
     id: "evidence",
     name: "Evidence agent",
-    does: "Writes the plain-language note on a finding: why it matters and how it could be fixed. It never changes a verdict.",
-    usesAi: "required",
+    does: "Puts the evidence on each finding: the measurement, the source of the limit, why it matters and how it could be fixed, all from the rule database. It never changes a verdict.",
+    usesAi: "never",
     runsOnUpload: false,
   },
   {

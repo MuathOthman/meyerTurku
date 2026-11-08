@@ -26,6 +26,7 @@ import yaml
 from shapely.geometry import Point as ShapelyPoint, box
 from shapely.strtree import STRtree
 
+from keel.ai_look import look
 from keel.checks import run_checks
 from keel.geometry import inscribed_diameter
 from keel.classify import LLM_CONFIDENCE_CAP, classify, classify_by_keyword
@@ -58,8 +59,21 @@ LARGE_AREA_RATIO = 0.6  # Of the median room area. Bigger areas stay on the engi
 DETAIL_AREA_RATIO = 0.1  # A far smaller area with the same compartment number is a room's detail.
 # These depend on inputs a single unlabelled drawing does not give.
 RULES_NEEDING_INPUT = {"ESC-STAIR-CAPACITY"}
+UNIDENTIFIED = "Unidentified space"
 STAIR_NUMBERS = 10000  # Detected stairs are numbered above any found space.
-COULD_NOT_CHECK = ("No exit door", "0 independent", "Fewer than two doors", "This rule could not")
+CLUTTER_LIMIT = 6.0  # Line work inside a stair box, as a multiple of its treads and rails.
+GREY_LIMIT = 0.35  # Share of that line work drawn grey, as equipment detail is.
+# Narrowest tread accepted as a stair. Rows of lockers drawn as bars were 545 to 550 mm on the
+# research vessel GA; its narrowest real stair was 603 mm. A narrower stair still goes to review
+# under its printed name, it is just not found from line work alone.
+MIN_STAIR_MM = 580.0
+# An arrowhead is 2.5 to 14 pt across on a sheet. On the research vessel GA every false stair
+# (winches, lockers, a liferaft container) had none within 265 mm, and every real stair narrower
+# than 700 mm had one.
+ARROW_PT = (2.5, 14.0)
+ARROW_MARGIN_MM = 265.0
+KEEP_WITHOUT_ARROW_MM = 700.0
+COULD_NOT_CHECK = ("No exit door", "0 independent", "Fewer than two doors", "This rule could not", "No door was found")
 CORRIDOR_MAY_BE = {Category.UNKNOWN, Category.OPEN_DECK, Category.SERVICE, Category.PUBLIC}
 
 NAMING_SCHEMA = {
@@ -90,7 +104,7 @@ NAMING_PROMPT = """This is part of a ship general arrangement drawing. Coloured 
 For each number you can see, report what that area is:
 - Use the room name printed on the drawing. A label may sit inside the area, or outside it with a thin leader line ending in a dot inside the area. Follow the line carefully.
 - Copy the compartment number printed under the name, such as 1-33-0, or leave it empty.
-- Set is_room to false for furniture, equipment and anything that is not a space a person could enter or a named compartment.
+- Set is_room to false for furniture (beds, desks, cabinets, lockers), equipment (winches, cranes, davits, fans, containers), hatches and hatch covers, deck fittings, tanks, voids and casings, and thin strips or slivers between lines. Only rooms, corridors, stairs and real areas of open deck are rooms.
 - If no name is printed, give your best description from the symbols, set evidence to symbols_only and use low confidence. Do not invent a printed name.
 - Do not measure anything and do not judge compliance.
 - Confidence runs from 0 to 1 and states how sure you are that the name belongs to this area."""
@@ -465,6 +479,65 @@ JUNK_NAME = re.compile(
 CREW_CABIN_MARK = re.compile(r"^\d\s*M$", re.IGNORECASE)  # "2M": a cabin for two.
 
 
+# Things a GA plan draws and labels that are not rooms anyone works in or escapes from.
+EQUIPMENT = re.compile(
+    r"HATCH|HAICH|CABLE[\s-]*(DUCT|TRAY|IRAY)|CRANE|DAVIT|BOOM|GALLOW|FITTING|\bBERTH|\bBEDS?\b|DESK|"
+    r"CABINET|FURNITURE|COUNTER|\bFAN\b|CONTAINER|STRIP|EDGE|THRESHOLD|STRUCTURE",
+    re.IGNORECASE,
+)
+# FO, DO, LO, FW and BW are the usual GA marks for fuel, diesel, lube oil, fresh and ballast water tanks.
+TANK_OR_VOID = re.compile(r"TANK|TK\b|VOID|CASING|UPTAKE|^(FO|DO|LO|FW|BW)$", re.IGNORECASE)
+SHORT_ROOM_NAMES = re.compile(r"^(WC|NH3|CO2|ECR|AC ROOM)$", re.IGNORECASE)
+GUESSED = {"symbols_only", "none"}
+SLIVER_M2 = 1.0  # An AI guess smaller than this is a gap between lines, not a room.
+SMALL_UNNAMED_M2 = 2.0
+SMALL_OPEN_DECK_M2 = 5.0  # Open deck is cut into pieces by every line; small pieces are noise.
+EQUIPMENT_KEEP_M2 = 6.0  # "CTD WINCH" printed on 104 m2 of open deck still names that deck.
+
+
+def _readable(name: str) -> bool:
+    """A real label has at least four plain letters. OCR noise such as "④", "5Φ" or "7d" does not."""
+    name = name.strip()
+    return bool(CREW_CABIN_MARK.match(name) or SHORT_ROOM_NAMES.match(name)) or len(re.findall(r"[A-Za-z]", name)) >= 4
+
+
+def _non_room_reason(space: NamedSpace) -> str | None:
+    """Why this area is not a room, or None to keep it."""
+    name = space.name.strip()
+    area = space.area_m2
+    guessed = space.evidence in GUESSED and not space.name_on_drawing
+    if space.category == Category.STAIR or space.evidence == "treads":
+        return None
+    if TANK_OR_VOID.search(name):
+        return "Tank, void or casing, not a room"
+    if EQUIPMENT.search(name) and (area is None or area < EQUIPMENT_KEEP_M2):
+        return "Equipment, furniture, a fitting or a thin strip, not a room"
+    if name not in (UNIDENTIFIED, "Unnamed space") and not _readable(name):
+        return "Unreadable label, not a room name"
+    if area is None:
+        return None
+    if guessed and area < SLIVER_M2:
+        return "Small gap between lines, read by AI from symbols only"
+    if name in (UNIDENTIFIED, "Unnamed space") and area < SMALL_UNNAMED_M2:
+        return "Small unnamed area"
+    if guessed and space.category == Category.OPEN_DECK and area < SMALL_OPEN_DECK_M2:
+        return "Small piece of open deck"
+    return None
+
+
+def _set_aside_non_rooms(named: list[NamedSpace]) -> tuple[list[NamedSpace], list[SetAside]]:
+    kept, aside = [], []
+    for space in named:
+        if CREW_CABIN_MARK.match(space.name.strip()):
+            space.category = Category.CABIN  # "1M", "2M": crew cabins, on every deck.
+        reason = _non_room_reason(space)
+        if reason:
+            aside.append(SetAside(space.number, space.name, reason))
+        else:
+            kept.append(space)
+    return kept, aside
+
+
 def _clean_exploded_names(named: list[NamedSpace]) -> None:
     """On a dense plan, OCR and AI also read furniture and stray marks. Those are not room names."""
     for space in named:
@@ -512,7 +585,45 @@ def _mark_corridors(found: FoundSpaces, named: list[NamedSpace], mm_per_pt: floa
             space.evidence = "shape"
 
 
-def _detected_stairs(found: FoundSpaces, named: list[NamedSpace], mm_per_pt: float, labels: np.ndarray, table: dict) -> list[NamedSpace]:
+def _cluttered(stair, segments) -> bool:
+    """A stair plan holds treads, two side rails and an arrow. A winch drawn with parallel bars
+    has far more line work inside the same box, much of it grey detail, so it is not a stair.
+
+    On the 60 m research vessel GA, real stairs had 1.1 to 4.5 times the line work of their
+    treads and rails, and none were mostly grey. Two trawl winches had 10.4 times, 38% grey.
+    """
+    bx0, by0, bx1, by1 = stair.box
+    inside = [s for s in segments if bx0 <= s.midpoint[0] <= bx1 and by0 <= s.midpoint[1] <= by1]
+    ink = sum(s.length for s in inside)
+    grey = sum(s.length for s in inside if s.gray)
+    expected = stair.treads * stair.width + 2 * max(bx1 - bx0, by1 - by0)
+    return ink > CLUTTER_LIMIT * expected or (ink > 0 and grey / ink > GREY_LIMIT)
+
+
+def arrowheads(path: str | Path, page: int) -> list[tuple[float, float]]:
+    """Centres of small filled shapes, such as the arrowhead showing which way a stair goes up."""
+    import pymupdf
+
+    with pymupdf.open(path) as document:
+        return [
+            ((d["rect"].x0 + d["rect"].x1) / 2, (d["rect"].y0 + d["rect"].y1) / 2)
+            for d in document[page].get_drawings()
+            if d["type"] in ("f", "fs") and ARROW_PT[0] <= max(d["rect"].width, d["rect"].height) <= ARROW_PT[1]
+        ]
+
+
+def _looks_like_stair(stair, heads: list[tuple[float, float]], mm_per_pt: float) -> bool:
+    """Every stair on a plan has an arrow showing the way up. Lockers, winches and liferaft
+    containers drawn with bars have none. Some stairs have their arrow just past the treads, so
+    the box is searched with a margin, and a stair of the usual escape width is kept anyway."""
+    if stair.width * mm_per_pt >= KEEP_WITHOUT_ARROW_MM:
+        return True
+    margin = ARROW_MARGIN_MM / mm_per_pt
+    bx0, by0, bx1, by1 = stair.box
+    return any(bx0 - margin <= x <= bx1 + margin and by0 - margin <= y <= by1 + margin for x, y in heads)
+
+
+def _detected_stairs(found: FoundSpaces, named: list[NamedSpace], mm_per_pt: float, labels: np.ndarray, table: dict, heads: list[tuple[float, float]] | None = None) -> list[NamedSpace]:
     """Stairs drawn inside bigger spaces have no room of their own, so add them as spaces.
 
     They are read from their treads, not a label, so the confidence stays below the trust level
@@ -523,13 +634,29 @@ def _detected_stairs(found: FoundSpaces, named: list[NamedSpace], mm_per_pt: flo
         s for s in found.primitives.segments
         if x0 <= s.midpoint[0] <= x1 and y0 <= s.midpoint[1] <= y1 and s.width > 0
     ]
-    stairs = find_stairs(inside, (500 / mm_per_pt, 2000 / mm_per_pt), (150 / mm_per_pt, 400 / mm_per_pt))
-    known = [found.cells_pt[s.number] for s in named if s.category == Category.STAIR and s.number in found.cells_pt]
+    every_line = [s for s in found.primitives.segments if x0 <= s.midpoint[0] <= x1 and y0 <= s.midpoint[1] <= y1]
+    stairs = [
+        s for s in find_stairs(inside, (MIN_STAIR_MM / mm_per_pt, 2000 / mm_per_pt), (150 / mm_per_pt, 400 / mm_per_pt))
+        if not _cluttered(s, every_line) and (heads is None or _looks_like_stair(s, heads, mm_per_pt))
+    ]
+    boxes = [box(*s.box) for s in stairs]
+    known = []
+    for space in named:
+        cell = found.cells_pt.get(space.number)
+        if space.category != Category.STAIR or cell is None:
+            continue
+        has_treads = any(cell.intersection(b).area > 0.5 * b.area for b in boxes)
+        if not space.name_on_drawing and not has_treads:
+            # The AI guessed "stair" from symbols, but no treads are drawn here: say so plainly.
+            space.name, space.category, space.confidence, space.evidence = "Unnamed space", Category.UNKNOWN, 0.0, "none"
+            continue
+        known.append(cell)
     extra: list[NamedSpace] = []
     for index, stair in enumerate(stairs, start=1):
         bx0, by0, bx1, by1 = stair.box
         center = ((bx0 + bx1) / 2, (by0 + by1) / 2)
-        if any(cell.contains(ShapelyPoint(center)) for cell in known):
+        outline = boxes[index - 1]
+        if any(cell.contains(ShapelyPoint(center)) or cell.intersection(outline).area > 0.5 * outline.area for cell in known):
             continue
         number = STAIR_NUMBERS + index
         scale = found.px_per_unit
@@ -717,6 +844,8 @@ def analyze(
     named = _merge_same_names(named, labels)
     named, details = _set_aside_details(named, labels)
     not_rooms.extend(details)
+    named, not_spaces = _set_aside_non_rooms(named)
+    not_rooms.extend(not_spaces)
     merged_into = {old: s.number for s in named for old in s.merged_from}
     table = load_applicability()
 
@@ -726,10 +855,33 @@ def analyze(
         if found.exploded:
             _clean_exploded_names(named)
             _mark_corridors(found, named, mm_per_unit)
-            named = named + _detected_stairs(found, named, mm_per_unit, labels, table)
+        # An AI guess from symbols alone, such as "deck passage", is not enough to check a space
+        # as a corridor. A printed name or the corridor shape is.
+        for space in named:
+            if space.category == Category.CORRIDOR and not space.name_on_drawing and space.evidence != "shape":
+                space.category = Category.UNKNOWN
+        # On every deck: an AI "stair" with no drawn treads is not called a stair.
+        named = named + _detected_stairs(found, named, mm_per_unit, labels, table, arrowheads(path, page))
         deck = _to_deck(found, named, mm_per_unit, str(path), page, merged_into, relative_error)
         rules = [r for r in load_rules(BACKEND / "rules", "escape", ship_type) if r.id not in RULES_NEEDING_INPUT]
         findings = run_checks(deck, rules)
+        if llm is not None:
+            # Where the code could not measure, the AI looks and reports what it sees.
+            check_of = {r.id: r.check for r in rules}
+            # Also the engine room when fewer than two ways out were found: a ladder or escape
+            # trunk the code cannot see is exactly what the AI can look for.
+            blind = [
+                f for f in findings
+                if _could_not_check(f)
+                or (check_of.get(f.rule_id) == "machinery_a_escape" and f.verdict == Verdict.NEEDS_REVIEW)
+            ]
+            if blind:
+                step = f"AI looking at {len(blind)} checks Keel could not measure"
+                on_step(step, "")
+                look(
+                    path, page, blind, check_of, llm, found.region,
+                    lambda done, total: on_step(step, f"{done} of {total}"),
+                )
 
     for space in named:
         subject = f"N{space.number:02d}"
@@ -810,7 +962,7 @@ def rename_space(space: dict, name: str, category: str | None) -> dict:
 
 def _could_not_check(finding: Finding) -> bool:
     """Keel lacked what it needed, such as doors. That is a gap to report, not a finding."""
-    if finding.verdict != Verdict.NEEDS_REVIEW or finding.measured_mm is not None:
+    if finding.verdict != Verdict.NEEDS_REVIEW or finding.measured_mm is not None or finding.ai_look:
         return False
     return finding.subject_id == "deck" or finding.why.startswith(COULD_NOT_CHECK)
 

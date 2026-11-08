@@ -6,6 +6,7 @@ import {
   Box,
   ChevronDown,
   ChevronRight,
+  ClipboardCheck,
   FolderOpen,
   FileText,
   History,
@@ -113,6 +114,14 @@ export function Sidebar() {
               <span>Model</span>
               <ChevronRight size={18} className="chevron" />
             </button>
+            <Link
+              to="/app/projects/$projectId/ship"
+              params={{ projectId: project.id }}
+              className="nav-item"
+            >
+              <ClipboardCheck size={20} />
+              <span>Whole ship</span>
+            </Link>
             <Link
               to="/app/projects/$projectId/files"
               params={{ projectId: project.id }}

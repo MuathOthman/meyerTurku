@@ -25,14 +25,13 @@ const VERDICTS: Verdict[] = ["FAIL", "NEEDS_REVIEW", "PASS"];
 function DeckPage() {
   const [tab, setTab] = useState<(typeof TABS)[number]>("Model");
   const [scenario, setScenario] = useState("");
-  const [explain, setExplain] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [showPassed, setShowPassed] = useState(false);
   const [showSpaces, setShowSpaces] = useState(false);
 
   const meta = useMeta();
   const project = useProject(DEFAULT_PROJECT);
-  const findingsQuery = useFindings(scenario, explain);
+  const findingsQuery = useFindings(scenario);
   const spaces = useSpaces();
   const decisionLog = useDecisions();
   const decisions = useMemo(() => currentDecisions(decisionLog.data ?? []), [decisionLog.data]);
@@ -100,7 +99,6 @@ function DeckPage() {
               value={scenario}
               onChange={(e) => {
                 setScenario(e.target.value);
-                setExplain(false);
                 setSelectedKey(null);
               }}
             >
@@ -110,14 +108,6 @@ function DeckPage() {
               ))}
             </select>
           </label>
-          <button
-            className="btn"
-            disabled={!m.llm || explain}
-            title={m.llm ? `Sends finding text to ${m.llm}` : "No AI configured on the backend"}
-            onClick={() => setExplain(true)}
-          >
-            {explain && findingsQuery.isFetching ? "Writing notes…" : "Add AI notes"}
-          </button>
         </div>
       </header>
 
@@ -193,7 +183,7 @@ function DeckPage() {
             </p>
           ) : null}
           {data?.note_error && <p className="notice">{data.note_error}</p>}
-          <div className="findings-stack">
+          <div className="findings-layout">
             <section className="card findings-list" aria-label="Findings">
               <div className="card-head">
                 <h2>Findings</h2>
